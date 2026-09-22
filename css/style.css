@@ -254,7 +254,7 @@ textarea.form-control { resize: vertical; min-height: 80px; }
 .login-page {
   min-height: 100vh; display: flex; align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #0b4388 0%, #1468c7 58%, #73b615 100%);
+  background: linear-gradient(135deg, #0b4388 0%, #1468c7 58%, #ef6c00 100%);
 }
 .login-box {
   background: var(--surface); border: none;
