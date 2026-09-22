@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>A.L.M. Coordination</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- Supabase JS SDK -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    /* Loader global */
+    #global-loader {
+      position:fixed;inset:0;background:var(--bg,#f4f6fa);display:flex;flex-direction:column;
+      align-items:center;justify-content:center;z-index:9999;gap:16px;
+    }
+    .loader-spinner {
+      width:40px;height:40px;border:3px solid var(--border,#e2e8f0);
+      border-top-color:var(--accent,#1468c7);border-radius:50%;animation:spin .7s linear infinite;
+    }
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .loader-text{font-size:14px;color:var(--text3,#94a3b8);font-weight:500;}
+    /* Bouton danger */
+    .btn-danger{background:var(--danger,#ef4444)!important;color:#fff!important;border-color:var(--danger,#ef4444)!important;}
+    .btn-danger:hover{opacity:.85;}
+  </style>
+</head>
+<body>
+
+<!-- Loader affiché pendant le chargement Supabase -->
+<div id="global-loader">
+  <div class="loader-spinner"></div>
+  <div class="loader-text">Chargement des données…</div>
+</div>
+
+<div id="toast"></div>
+
+<!-- ===== LOGIN ===== -->
+<div id="login-page" class="login-page" style="display:none;">
+  <div class="login-box">
+    <img class="brand-logo brand-logo-login" src="ChatGPT Image 3 août 2026, 17_01_25.png" alt="A.L.M. Association de Londinières">
+    <div class="login-sub">Gestion mutualisée du matériel</div>
+    <div class="login-title">Connexion</div>
+    <div class="form-group">
+      <label class="form-label">Identifiant</label>
+      <input type="text" class="form-control" id="login-user" placeholder="ex: admin" autocomplete="username">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Mot de passe</label>
+      <input type="password" class="form-control" id="login-pass" placeholder="••••••••" autocomplete="current-password">
+    </div>
+    <div id="login-error" class="alert alert-danger" style="display:none;margin-bottom:12px;">Identifiants incorrects.</div>
+    <button class="btn btn-primary" style="width:100%;justify-content:center;padding:11px;" onclick="loginSubmit()">Se connecter</button>
+  </div>
+</div>
+
+<!-- ===== APP ===== -->
+<div id="app-page" class="app-layout" style="display:none;">
+
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <img class="brand-logo brand-logo-sidebar" src="ChatGPT Image 3 août 2026, 17_01_25.png" alt="A.L.M. Association de Londinières">
+      <div class="sidebar-tagline">Gestion mutualisée du matériel</div>
+    </div>
+    <div class="nav-section">
+      <div class="nav-section-label">Vue générale</div>
+      <div class="nav-item" data-page="dashboard" onclick="navigate('dashboard')"><span class="nav-icon">◈</span><span>Tableau de bord</span></div>
+      <div class="nav-item" data-page="calendar" onclick="navigate('calendar')"><span class="nav-icon">📅</span><span>Calendrier</span></div>
+    </div>
+    <div class="nav-section">
+      <div class="nav-section-label">Matériel</div>
+      <div class="nav-item" data-page="stock" onclick="navigate('stock')"><span class="nav-icon">📦</span><span>Stock & inventaire</span></div>
+      <div class="nav-item" data-page="reservations" onclick="navigate('reservations')"><span class="nav-icon">🔖</span><span>Réservations</span></div>
+    </div>
+    <div class="nav-section">
+      <div class="nav-section-label">Fédération</div>
+      <div class="nav-item" data-page="annuaire" onclick="navigate('annuaire')"><span class="nav-icon">📋</span><span>Annuaire</span></div>
+    </div>
+    <div class="nav-section admin-only">
+      <div class="nav-section-label">Administration</div>
+      <div class="nav-item admin-only" data-page="approvals" onclick="navigate('approvals')">
+        <span class="nav-icon">✅</span><span>Validations</span>
+        <span class="nav-badge" id="badge-approvals" style="display:none;">0</span>
+      </div>
+      <div class="nav-item admin-only" data-page="associations" onclick="navigate('associations')"><span class="nav-icon">🏢</span><span>Associations</span></div>
+      <div class="nav-item admin-only" data-page="comptes" onclick="navigate('comptes')"><span class="nav-icon">🔑</span><span>Comptes</span></div>
+    </div>
+    <div class="nav-section">
+      <div class="nav-section-label">Mon compte</div>
+      <div class="nav-item" data-page="history" onclick="navigate('history')"><span class="nav-icon">🕑</span><span>Historique</span></div>
+      <div class="nav-item" data-page="profile" onclick="navigate('profile')"><span class="nav-icon">👤</span><span>Mon profil</span></div>
+    </div>
+    <div class="sidebar-user">
+      <div class="user-name" id="sidebar-user-name">—</div>
+      <div id="sidebar-role-badge" class="user-role-badge">—</div>
+      <div class="user-asso" id="sidebar-asso-line"></div>
+      <button class="btn btn-sm" style="margin-top:10px;width:100%;justify-content:center;background:rgba(255,255,255,0.1);border-color:rgba(255,255,255,0.2);color:#fff;" onclick="logout()">Déconnexion</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <span class="topbar-title" id="topbar-title">Tableau de bord</span>
+      <div class="topbar-actions">
+        <button class="btn btn-primary" onclick="openNewReservation()">+ Nouvelle réservation</button>
+      </div>
+    </div>
+
+    <div class="content">
+
+      <!-- DASHBOARD -->
+      <div id="page-dashboard" class="page">
+        <div class="stats-grid">
+          <div class="stat-card"><div class="stat-label">Équipements</div><div class="stat-value" id="stat-equip">—</div><div class="stat-sub">dans le stock fédéral</div></div>
+          <div class="stat-card"><div class="stat-label">Réservations</div><div class="stat-value" id="stat-reservations">—</div><div class="stat-sub">au total</div></div>
+          <div class="stat-card admin-stat"><div class="stat-label">Associations actives</div><div class="stat-value" id="stat-assos">—</div><div class="stat-sub">membres</div></div>
+          <div class="stat-card stat-accent"><div class="stat-label">En attente</div><div class="stat-value" id="stat-pending">—</div><div class="stat-sub">validations requises</div></div>
+        </div>
+        <div class="two-col">
+          <div class="card">
+            <div class="card-header"><div class="card-title">Dernières réservations</div><button class="btn btn-sm" onclick="navigate('reservations')">Voir tout</button></div>
+            <div class="table-wrap"><table><thead><tr><th>Matériel</th><th class="admin-only">Association</th><th>Période</th><th>Statut</th></tr></thead><tbody id="dash-recent"></tbody></table></div>
+          </div>
+          <div class="card"><div class="card-header"><div class="card-title">⚠️ Alertes stock</div></div><div id="dash-alerts"></div></div>
+        </div>
+        <div id="dash-admin">
+          <div class="card"><div class="card-header"><div class="card-title">🔔 Demandes en attente</div><button class="btn btn-sm" onclick="navigate('approvals')">Voir tout</button></div><div id="dash-pending"></div></div>
+        </div>
+      </div>
+
+      <!-- CALENDAR -->
+      <div id="page-calendar" class="page">
+        <div class="card">
+          <div class="cal-nav">
+            <button class="btn btn-sm" onclick="calPrevMonth()">‹</button>
+            <span class="cal-month-label" id="cal-month-label">—</span>
+            <button class="btn btn-sm" onclick="calNextMonth()">›</button>
+            <button class="btn btn-sm btn-primary" onclick="openNewReservation()" style="margin-left:auto;">+ Réservation</button>
+          </div>
+          <div class="cal-header-row">
+            <div class="cal-day-name">Lun</div><div class="cal-day-name">Mar</div><div class="cal-day-name">Mer</div>
+            <div class="cal-day-name">Jeu</div><div class="cal-day-name">Ven</div><div class="cal-day-name">Sam</div><div class="cal-day-name">Dim</div>
+          </div>
+          <div class="cal-grid" id="cal-grid"></div>
+        </div>
+      </div>
+
+      <!-- STOCK -->
+      <div id="page-stock" class="page">
+        <div class="filter-bar" id="stock-filters">
+          <button class="filter-btn active" data-filter="all" onclick="setStockFilter('all')">Tout</button>
+          <button class="filter-btn" data-filter="event" onclick="setStockFilter('event')">Événementiel</button>
+          <button class="filter-btn" data-filter="sport" onclick="setStockFilter('sport')">Sportif</button>
+          <button class="filter-btn" data-filter="tech" onclick="setStockFilter('tech')">Technique</button>
+          <button class="btn btn-primary btn-sm admin-only" style="margin-left:auto;" onclick="openAddEquip()">+ Ajouter équipement</button>
+        </div>
+        <div class="card"><div class="table-wrap"><table><thead><tr><th>Équipement</th><th>Catégorie</th><th>Total</th><th>Disponibilité</th><th>Statut</th><th>État</th><th>Action</th></tr></thead><tbody id="stock-tbody"></tbody></table></div></div>
+      </div>
+
+      <!-- RESERVATIONS -->
+      <div id="page-reservations" class="page">
+        <div class="filter-bar" id="reserv-filters">
+          <button class="filter-btn active" data-filter="all" onclick="setReservFilter('all')">Toutes</button>
+          <button class="filter-btn" data-filter="pending" onclick="setReservFilter('pending')">En attente</button>
+          <button class="filter-btn" data-filter="approved" onclick="setReservFilter('approved')">Approuvées</button>
+          <button class="filter-btn" data-filter="rejected" onclick="setReservFilter('rejected')">Refusées</button>
+          <button class="btn btn-primary btn-sm" style="margin-left:auto;" onclick="openNewReservation()">+ Nouvelle demande</button>
+        </div>
+        <div class="card"><div class="table-wrap"><table><thead><tr><th>Matériel</th><th id="th-asso">Association</th><th>Début</th><th>Fin</th><th>Qté</th><th>Statut</th><th>Actions</th></tr></thead><tbody id="reservations-tbody"></tbody></table></div></div>
+      </div>
+
+      <!-- APPROVALS -->
+      <div id="page-approvals" class="page"><div id="approvals-list"></div></div>
+
+      <!-- ASSOCIATIONS -->
+      <div id="page-associations" class="page">
+        <div style="display:flex;justify-content:flex-end;margin-bottom:14px;">
+          <button class="btn btn-primary" onclick="openAddAsso()">+ Ajouter une association</button>
+        </div>
+        <div class="card"><div class="table-wrap"><table><thead><tr><th>Association</th><th>Référent</th><th>Email</th><th>Téléphone</th><th>Réservations</th><th>Statut</th><th>Actions</th></tr></thead><tbody id="assos-tbody"></tbody></table></div></div>
+      </div>
+
+      <!-- ANNUAIRE -->
+      <div id="page-annuaire" class="page"><div style="display:flex;flex-direction:column;gap:12px;" id="annuaire-list"></div></div>
+
+      <!-- HISTORY -->
+      <div id="page-history" class="page">
+        <div class="card"><div class="card-header"><div class="card-title">Journal des activités</div></div><div id="history-list"></div></div>
+      </div>
+
+      <!-- COMPTES -->
+      <div id="page-comptes" class="page">
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">Gestion des comptes utilisateurs</div>
+            <button class="btn btn-primary btn-sm" onclick="openAddUser()">+ Créer un compte</button>
+          </div>
+          <p style="font-size:13px;color:var(--text2);margin-bottom:16px;">Créez des comptes, réinitialisez les mots de passe ou supprimez des utilisateurs.</p>
+          <div class="table-wrap"><table><thead><tr><th>Nom</th><th>Identifiant</th><th>Rôle</th><th>Association</th><th>Actions</th></tr></thead><tbody id="comptes-tbody"></tbody></table></div>
+        </div>
+      </div>
+
+      <!-- PROFILE -->
+      <div id="page-profile" class="page">
+        <div class="two-col">
+          <div class="card">
+            <div class="card-header"><div class="card-title">👤 Informations du compte</div></div>
+            <div style="margin-bottom:18px;">
+              <div style="font-size:22px;font-weight:700;color:var(--text);" id="profile-name-display">—</div>
+              <div style="font-size:12px;color:var(--text3);margin-top:4px;" id="profile-role">—</div>
+            </div>
+            <table style="width:100%;font-size:13px;border-collapse:collapse;">
+              <tr><td style="padding:8px 0;color:var(--text3);width:40%;border-bottom:1px solid var(--border);">Identifiant</td><td style="border-bottom:1px solid var(--border);"><code style="background:var(--surface2);padding:2px 7px;border-radius:4px;" id="profile-login">—</code></td></tr>
+              <tr id="profile-asso-row"><td style="padding:8px 0;color:var(--text3);">Association</td><td style="font-weight:500;" id="profile-asso-name">—</td></tr>
+            </table>
+            <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--border);">
+              <div style="font-size:13px;font-weight:600;margin-bottom:8px;">Modifier mon nom d'affichage</div>
+              <div style="display:flex;gap:8px;">
+                <input type="text" class="form-control" id="profile-name-input" placeholder="Votre nom">
+                <button class="btn btn-primary" onclick="submitChangeName()">Enregistrer</button>
+              </div>
+              <div id="profile-name-success" class="alert alert-success" style="display:none;margin-top:10px;font-size:12px;">✓ Nom mis à jour</div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header"><div class="card-title">🔑 Changer mon mot de passe</div></div>
+            <div id="pw-error" class="alert alert-danger" style="display:none;margin-bottom:14px;"></div>
+            <div id="pw-success" class="alert alert-success" style="display:none;margin-bottom:14px;">✓ Mot de passe mis à jour !</div>
+            <div class="form-group"><label class="form-label">Mot de passe actuel *</label><input type="password" class="form-control" id="pw-current" placeholder="••••••••"></div>
+            <div class="form-group"><label class="form-label">Nouveau mot de passe *</label><input type="password" class="form-control" id="pw-new" placeholder="6 caractères minimum"></div>
+            <div class="form-group"><label class="form-label">Confirmer *</label><input type="password" class="form-control" id="pw-confirm" placeholder="••••••••"></div>
+            <button class="btn btn-primary" onclick="submitChangePassword()" style="width:100%;justify-content:center;">Mettre à jour</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<!-- ===== MODALS ===== -->
+
+<!-- Nouvelle réservation -->
+<div class="modal-backdrop" id="modal-new-reserv">
+  <div class="modal">
+    <div class="modal-title">Nouvelle demande de réservation</div>
+    <div id="avail-preview" class="alert" style="display:none;margin-bottom:14px;"></div>
+    <label class="form-label" id="new-asso-label">Association</label>
+    <div class="form-group"><select class="form-control" id="new-asso"></select></div>
+    <div class="form-group"><label class="form-label">Équipement *</label><select class="form-control" id="new-equip" onchange="updateAvailabilityPreview()"></select></div>
+    <div class="form-group"><label class="form-label">Quantité *</label><input type="number" class="form-control" id="new-qty" value="1" min="1"></div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Date de début *</label><input type="date" class="form-control" id="new-start" onchange="updateAvailabilityPreview()"></div>
+      <div class="form-group"><label class="form-label">Date de fin *</label><input type="date" class="form-control" id="new-end" onchange="updateAvailabilityPreview()"></div>
+    </div>
+    <div class="form-group"><label class="form-label">Motif</label><textarea class="form-control" id="new-reason" placeholder="Décrivez l'événement ou l'usage prévu…"></textarea></div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal('modal-new-reserv')">Annuler</button>
+      <button class="btn btn-primary" onclick="submitNewReservation()">Soumettre la demande</button>
+    </div>
+  </div>
+</div>
+
+<!-- Détail réservation -->
+<div class="modal-backdrop" id="modal-detail">
+  <div class="modal">
+    <div class="modal-title">Détail de la réservation</div>
+    <div id="detail-content"></div>
+    <div class="modal-footer"><button class="btn" onclick="closeModal('modal-detail')">Fermer</button></div>
+  </div>
+</div>
+
+<!-- Équipement -->
+<div class="modal-backdrop" id="modal-equip">
+  <div class="modal">
+    <div class="modal-title" id="equip-modal-title">Ajouter un équipement</div>
+    <input type="hidden" id="equip-id">
+    <div class="form-group"><label class="form-label">Nom *</label><input type="text" class="form-control" id="equip-name" placeholder="ex: Sono complète"></div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Catégorie</label><select class="form-control" id="equip-cat"><option value="event">Événementiel</option><option value="sport">Sportif</option><option value="tech">Technique</option></select></div>
+      <div class="form-group"><label class="form-label">Quantité totale *</label><input type="number" class="form-control" id="equip-total" value="1" min="1"></div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Association propriétaire</label>
+      <select class="form-control" id="equip-owner"></select>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">État</label><select class="form-control" id="equip-state"><option>Bon état</option><option>Usure légère</option><option>Nécessite entretien</option><option>Hors service</option></select></div>
+      <div class="form-group"><label class="form-label">Lieu de stockage</label><input type="text" class="form-control" id="equip-location" placeholder="ex: Local A"></div>
+    </div>
+    <div class="form-group"><label class="form-label">Notes</label><textarea class="form-control" id="equip-notes" placeholder="Caractéristiques, accessoires inclus…"></textarea></div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal('modal-equip')">Annuler</button>
+      <button class="btn btn-primary" onclick="submitEquip()">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<!-- Association -->
+<div class="modal-backdrop" id="modal-asso">
+  <div class="modal">
+    <div class="modal-title" id="asso-modal-title">Ajouter une association</div>
+    <input type="hidden" id="asso-id">
+    <div class="form-group"><label class="form-label">Nom *</label><input type="text" class="form-control" id="asso-name" placeholder="ex: Sport Club Nord"></div>
+    <div class="form-group"><label class="form-label">Référent *</label><input type="text" class="form-control" id="asso-referent" placeholder="Prénom Nom"></div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Email *</label><input type="email" class="form-control" id="asso-email" placeholder="contact@asso.fr"></div>
+      <div class="form-group"><label class="form-label">Téléphone</label><input type="tel" class="form-control" id="asso-phone" placeholder="06 XX XX XX XX"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal('modal-asso')">Annuler</button>
+      <button class="btn btn-primary" onclick="submitAsso()">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<!-- Réinitialiser mot de passe (admin) -->
+<div class="modal-backdrop" id="modal-admin-pw">
+  <div class="modal">
+    <div class="modal-title">🔑 Réinitialiser un mot de passe</div>
+    <input type="hidden" id="admin-pw-user-id">
+    <div class="alert alert-warn" style="margin-bottom:16px;"><span id="admin-pw-user-label" style="font-weight:500;"></span></div>
+    <div id="admin-pw-error" class="alert alert-danger" style="display:none;margin-bottom:14px;"></div>
+    <div class="form-group"><label class="form-label">Nouveau mot de passe *</label><input type="password" class="form-control" id="admin-pw-new" placeholder="6 caractères minimum"></div>
+    <div class="form-group"><label class="form-label">Confirmer *</label><input type="password" class="form-control" id="admin-pw-confirm" placeholder="••••••••"></div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal('modal-admin-pw')">Annuler</button>
+      <button class="btn btn-primary" onclick="submitAdminChangePw()">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<!-- ✨ NOUVEAU : Créer un compte utilisateur -->
+<div class="modal-backdrop" id="modal-new-user">
+  <div class="modal">
+    <div class="modal-title">👤 Créer un nouveau compte</div>
+    <div id="new-user-error" class="alert alert-danger" style="display:none;margin-bottom:14px;"></div>
+    <div class="form-group">
+      <label class="form-label">Nom affiché *</label>
+      <input type="text" class="form-control" id="new-user-name" placeholder="ex: Marie Dupont">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Identifiant de connexion *</label>
+      <input type="text" class="form-control" id="new-user-login" placeholder="ex: marie.dupont" autocomplete="off">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Mot de passe *</label>
+        <input type="password" class="form-control" id="new-user-pw" placeholder="6 caractères minimum" autocomplete="new-password">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Confirmer *</label>
+        <input type="password" class="form-control" id="new-user-pw-confirm" placeholder="••••••••" autocomplete="new-password">
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Rôle *</label>
+      <select class="form-control" id="new-user-role" onchange="onNewUserRoleChange()">
+        <option value="asso">Association</option>
+        <option value="admin">Administrateur</option>
+      </select>
+    </div>
+    <div class="form-group" id="new-user-asso-group">
+      <label class="form-label">Association liée</label>
+      <select class="form-control" id="new-user-asso"></select>
+      <div style="font-size:11px;color:var(--text3);margin-top:4px;">L'utilisateur ne verra que les réservations de cette association.</div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal('modal-new-user')">Annuler</button>
+      <button class="btn btn-primary" onclick="submitNewUser()">Créer le compte</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/app.js"></script>
+</body>
+</html>
