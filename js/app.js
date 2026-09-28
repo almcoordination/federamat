@@ -156,11 +156,11 @@ async function notifyReservation(reservationId, status, note='') {
       body: JSON.stringify({ reservationId, status, note }),
     });
     const result = await response.json();
-    if (!response.ok) throw new Error(result.error || 'Envoi impossible');
-    return result.sent === true;
+    if (!response.ok) throw new Error(result.error || `Erreur de la fonction email (${response.status})`);
+    return result;
   } catch (error) {
     console.error('Notification propriétaire :', error);
-    return false;
+    return { sent: false, error: error.message };
   }
 }
 
@@ -234,7 +234,7 @@ async function quickApprove(id) {
   await addHistory('approved',`Réservation ${getEquip(r.equip_id)?.name} × ${r.qty} (${getAsso(r.asso_id)?.name}) approuvée`);
   renderSidebar(); renderDashboard();
   const notified=await notifyReservation(r.id,'approved');
-  toast(notified?'✓ Approuvée — email envoyé':'✓ Approuvée — email non envoyé',4000);
+  toast(notified.sent?'✓ Approuvée — email envoyé':`✓ Approuvée — email non envoyé : ${notified.error||notified.reason||'erreur inconnue'}`,7000);
 }
 
 // ===== CALENDAR =====
@@ -344,7 +344,7 @@ async function approveReserv(id){
   await addHistory('approved',`Réservation ${getEquip(r.equip_id)?.name} × ${r.qty} (${getAsso(r.asso_id)?.name}) approuvée`);
   renderSidebar(); renderApprovals();
   const notified=await notifyReservation(r.id,'approved',note);
-  toast(notified?'✓ Approuvée — email envoyé':'✓ Approuvée — email non envoyé',4000);
+  toast(notified.sent?'✓ Approuvée — email envoyé':`✓ Approuvée — email non envoyé : ${notified.error||notified.reason||'erreur inconnue'}`,7000);
 }
 async function rejectReserv(id){
   const r=state.data.reservations.find(r=>r.id===id); if(!r) return;
@@ -354,7 +354,7 @@ async function rejectReserv(id){
   await addHistory('rejected',`Réservation ${getEquip(r.equip_id)?.name} × ${r.qty} (${getAsso(r.asso_id)?.name}) refusée`);
   renderSidebar(); renderApprovals();
   const notified=await notifyReservation(r.id,'rejected',note);
-  toast(notified?'Refusée — email envoyé':'Refusée — email non envoyé',4000);
+  toast(notified.sent?'Refusée — email envoyé':`Refusée — email non envoyé : ${notified.error||notified.reason||'erreur inconnue'}`,7000);
 }
 
 // ===== ASSOCIATIONS =====
@@ -420,7 +420,7 @@ async function submitNewReservation(){
   await addHistory('created',`Nouvelle réservation ${getEquip(equipId)?.name} × ${qty} (${getAsso(assoId)?.name}) soumise`);
   closeModal('modal-new-reserv'); renderSidebar();
   const notified=await notifyReservation(r.id,'pending');
-  toast(notified?'✓ Demande soumise — propriétaire du matériel averti':'✓ Demande soumise — notification du propriétaire non envoyée',5000);
+  toast(notified.sent?'✓ Demande soumise — propriétaire du matériel averti':`✓ Demande soumise — email non envoyé : ${notified.error||notified.reason||'erreur inconnue'}`,7000);
   navigate('reservations');
 }
 

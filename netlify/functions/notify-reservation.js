@@ -30,8 +30,14 @@ function formatDate(date) {
 exports.handler = async event => {
   if (event.httpMethod !== 'POST') return response(405, { error: 'Méthode non autorisée' });
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY || !GMAIL_USER || !GMAIL_APP_PASSWORD) {
-    console.error('Variables Netlify manquantes pour la notification de réservation.');
-    return response(500, { error: 'Service email non configuré' });
+    const missing = [
+      ['SUPABASE_URL', SUPABASE_URL],
+      ['SUPABASE_SERVICE_ROLE_KEY', SUPABASE_SERVICE_ROLE_KEY],
+      ['GMAIL_USER', GMAIL_USER],
+      ['GMAIL_APP_PASSWORD', GMAIL_APP_PASSWORD],
+    ].filter(([, value]) => !value).map(([name]) => name);
+    console.error('Variables Netlify manquantes :', missing.join(', '));
+    return response(500, { error: `Variables Netlify manquantes : ${missing.join(', ')}` });
   }
 
   let reservationId, requestedStatus, note;
@@ -98,6 +104,15 @@ exports.handler = async event => {
     return response(200, { sent: true });
   } catch (error) {
     console.error('Notification réservation :', error);
-    return response(500, { error: 'Échec de la notification' });
+    if (error.code === 'EAUTH' || error.responseCode === 535) {
+      return response(502, { error: 'Gmail a refusé la connexion. Vérifiez GMAIL_USER et le mot de passe d’application.' });
+    }
+    if (['ETIMEDOUT', 'ECONNECTION', 'ENOTFOUND'].includes(error.code)) {
+      return response(502, { error: `Connexion SMTP Gmail impossible depuis Netlify (${error.code}).` });
+    }
+    if (error.responseCode >= 500) {
+      return response(502, { error: `Gmail a refusé le message (code ${error.responseCode}). Vérifiez l’adresse email destinataire.` });
+    }
+    return response(500, { error: 'Échec de la notification. Consultez les journaux de la fonction Netlify.' });
   }
 };
