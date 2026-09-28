@@ -23,16 +23,19 @@ npx serve .
 
 ### Option 3 — Hébergement web
 Uploadez tous les fichiers sur votre hébergeur (OVH, Infomaniak, etc.) ou déployez sur :
-- **Netlify** : glissez-déposez le dossier du projet sur https://app.netlify.com/drop
+- **Netlify** : connectez le dépôt GitHub (nécessaire pour publier la fonction d'envoi automatique)
 - **Vercel** : `vercel --prod`
 - **GitHub Pages** : push le dossier, activez Pages dans les paramètres
 
 ### Déploiement Netlify recommandé
 
-1. Ouvrez https://app.netlify.com/drop et déposez le dossier qui contient `index.html`.
-2. Attendez la fin du déploiement, puis ouvrez l'URL `*.netlify.app` fournie.
-3. Dans Supabase, vérifiez que les règles RLS du fichier `SUPABASE_SETUP.md` sont bien exécutées sur les six tables.
-4. Testez la connexion sur l'URL Netlify en navigation privée. Le site est statique : aucun build command ni dossier `dist` n'est nécessaire.
+1. Connectez le dépôt GitHub à Netlify pour que le dossier `netlify/functions` soit déployé avec le site. Le glisser-déposer statique ne publie pas les fonctions serveur.
+2. Dans les paramètres du site Netlify, ajoutez `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `GMAIL_USER` et `GMAIL_APP_PASSWORD` comme variables d'environnement.
+3. Pour créer le mot de passe d'application Google, activez d'abord la validation en deux étapes, puis ouvrez https://myaccount.google.com/apppasswords et créez un mot de passe nommé `FédéraMat`. Vérifiez aussi que les règles RLS du fichier `SUPABASE_SETUP.md` sont bien exécutées sur les six tables.
+4. Testez une nouvelle réservation : un email est envoyé à l'association propriétaire du matériel.
+5. Aucun build command ni dossier `dist` n'est nécessaire.
+
+`GMAIL_USER` est l'adresse Gmail qui apparaîtra comme expéditeur. `GMAIL_APP_PASSWORD` est le mot de passe d'application Google, pas le mot de passe habituel du compte. `SUPABASE_SERVICE_ROLE_KEY` et `GMAIL_APP_PASSWORD` sont des secrets : configurez-les uniquement dans Netlify, jamais dans le code du navigateur.
 
 Si l'application affiche une erreur de connexion, ouvrez la console du navigateur (`F12`) : le message Supabase indique maintenant la table ou la permission en cause. Vérifiez aussi que l'URL du projet et la clé publique dans `js/app.js` correspondent au même projet.
 

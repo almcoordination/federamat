@@ -164,6 +164,21 @@ function mailtoOwner(r) {
   const appName=cfg().app_name||'FédéraMat';
   return `mailto:${owner.email}?subject=${encodeURIComponent(`[${appName}] 📦 Votre matériel a été réservé — ${eq.name}`)}&body=${encodeURIComponent(`Bonjour ${owner.referent},\n\nLe matériel ci-dessous a été réservé.\n\nÉquipement : ${eq.name} × ${r.qty}\nRéservé par : ${requester?.name||'?'}\nDu : ${fmtDate(r.date_start)} au ${fmtDate(r.date_end)}\n\nCordialement,\n${state.currentUser.name}`)}`;
 }
+async function notifyReservationOwner(reservationId) {
+  try {
+    const response = await fetch('/.netlify/functions/notify-reservation', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reservationId }),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || 'Envoi impossible');
+    return result.sent === true;
+  } catch (error) {
+    console.error('Notification propriétaire :', error);
+    return false;
+  }
+}
 
 // ===== NAVIGATION =====
 function navigate(page) {
@@ -424,7 +439,9 @@ async function submitNewReservation(){
   state.data.reservations.push(r);
   await addHistory('created',`Nouvelle réservation ${getEquip(equipId)?.name} × ${qty} (${getAsso(assoId)?.name}) soumise`);
   closeModal('modal-new-reserv'); renderSidebar();
-  toast('✓ Demande soumise — en attente de validation'); navigate('reservations');
+  const notified=await notifyReservationOwner(r.id);
+  toast(notified?'✓ Demande soumise — propriétaire du matériel averti':'✓ Demande soumise — notification du propriétaire non envoyée',5000);
+  navigate('reservations');
 }
 
 // ===== ÉQUIPEMENTS =====
