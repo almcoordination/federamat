@@ -32,7 +32,7 @@ Uploadez tous les fichiers sur votre hébergeur (OVH, Infomaniak, etc.) ou dépl
 1. Connectez le dépôt GitHub à Netlify pour que le dossier `netlify/functions` soit déployé avec le site. Le glisser-déposer statique ne publie pas les fonctions serveur.
 2. Dans les paramètres du site Netlify, ajoutez `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `GMAIL_USER` et `GMAIL_APP_PASSWORD` comme variables d'environnement.
 3. Pour créer le mot de passe d'application Google, activez d'abord la validation en deux étapes, puis ouvrez https://myaccount.google.com/apppasswords et créez un mot de passe nommé `FédéraMat`. Vérifiez aussi que les règles RLS du fichier `SUPABASE_SETUP.md` sont bien exécutées sur les six tables.
-4. Testez une nouvelle réservation : un email est envoyé à l'association propriétaire du matériel.
+4. Testez une nouvelle réservation, puis son approbation ou son refus : les emails automatiques partent depuis l'adresse Gmail configurée dans Netlify, sans ouvrir de logiciel de messagerie.
 5. Aucun build command ni dossier `dist` n'est nécessaire.
 
 `GMAIL_USER` est l'adresse Gmail qui apparaîtra comme expéditeur. `GMAIL_APP_PASSWORD` est le mot de passe d'application Google, pas le mot de passe habituel du compte. `SUPABASE_SERVICE_ROLE_KEY` et `GMAIL_APP_PASSWORD` sont des secrets : configurez-les uniquement dans Netlify, jamais dans le code du navigateur.

@@ -147,29 +147,13 @@ function toast(msg, d=3500) {
   setTimeout(()=>el.classList.remove('show'), d);
 }
 
-// ===== EMAILS MAILTO =====
-function mailtoApproved(r, note) {
-  const eq=getEquip(r.equip_id), as=getAsso(r.asso_id); if(!as?.email) return null;
-  const appName=cfg().app_name||'FédéraMat';
-  return `mailto:${as.email}?subject=${encodeURIComponent(`[${appName}] ✅ Réservation approuvée — ${eq?.name}`)}&body=${encodeURIComponent(`Bonjour ${as.referent},\n\nVotre demande a été approuvée.\n\nÉquipement : ${eq?.name} × ${r.qty}\nDu : ${fmtDate(r.date_start)} au ${fmtDate(r.date_end)}\n${note?`\nMessage : ${note}`:''}\n\nCordialement,\n${state.currentUser.name}`)}`;
-}
-function mailtoRejected(r, note) {
-  const eq=getEquip(r.equip_id), as=getAsso(r.asso_id); if(!as?.email) return null;
-  const appName=cfg().app_name||'FédéraMat';
-  return `mailto:${as.email}?subject=${encodeURIComponent(`[${appName}] ❌ Réservation refusée — ${eq?.name}`)}&body=${encodeURIComponent(`Bonjour ${as.referent},\n\nVotre demande n'a pas pu être approuvée.\n\nÉquipement : ${eq?.name} × ${r.qty}\nDu : ${fmtDate(r.date_start)} au ${fmtDate(r.date_end)}\n${note?`\nMotif : ${note}`:''}\n\nCordialement,\n${state.currentUser.name}`)}`;
-}
-function mailtoOwner(r) {
-  const eq=getEquip(r.equip_id); if(!eq?.owner_asso_id) return null;
-  const owner=getAsso(eq.owner_asso_id), requester=getAsso(r.asso_id); if(!owner?.email) return null;
-  const appName=cfg().app_name||'FédéraMat';
-  return `mailto:${owner.email}?subject=${encodeURIComponent(`[${appName}] 📦 Votre matériel a été réservé — ${eq.name}`)}&body=${encodeURIComponent(`Bonjour ${owner.referent},\n\nLe matériel ci-dessous a été réservé.\n\nÉquipement : ${eq.name} × ${r.qty}\nRéservé par : ${requester?.name||'?'}\nDu : ${fmtDate(r.date_start)} au ${fmtDate(r.date_end)}\n\nCordialement,\n${state.currentUser.name}`)}`;
-}
-async function notifyReservationOwner(reservationId) {
+// ===== NOTIFICATIONS EMAIL =====
+async function notifyReservation(reservationId, status, note='') {
   try {
     const response = await fetch('/.netlify/functions/notify-reservation', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ reservationId }),
+      body: JSON.stringify({ reservationId, status, note }),
     });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || 'Envoi impossible');
@@ -245,14 +229,12 @@ function statusLabel(s){return{pending:'En attente',approved:'Approuvée',reject
 
 async function quickApprove(id) {
   const r=state.data.reservations.find(r=>r.id===id); if(!r) return;
+  const ok=await dbUpdate('reservations', id, {status:'approved'}); if(!ok) return;
   r.status='approved';
-  await dbUpdate('reservations', id, {status:'approved'});
   await addHistory('approved',`Réservation ${getEquip(r.equip_id)?.name} × ${r.qty} (${getAsso(r.asso_id)?.name}) approuvée`);
   renderSidebar(); renderDashboard();
-  const m1=mailtoApproved(r,''), m2=mailtoOwner(r);
-  if(m1) window.location.href=m1;
-  if(m2) setTimeout(()=>window.open(m2),800);
-  toast('✓ Approuvée — votre client mail va s\'ouvrir');
+  const notified=await notifyReservation(r.id,'approved');
+  toast(notified?'✓ Approuvée — email envoyé':'✓ Approuvée — email non envoyé',4000);
 }
 
 // ===== CALENDAR =====
@@ -357,24 +339,22 @@ function renderApprovals(){
 async function approveReserv(id){
   const r=state.data.reservations.find(r=>r.id===id); if(!r) return;
   const note=document.getElementById('note-'+id)?.value||'';
+  const ok=await dbUpdate('reservations', id, {status:'approved', notes:note}); if(!ok) return;
   r.notes=note; r.status='approved';
-  await dbUpdate('reservations', id, {status:'approved', notes:note});
   await addHistory('approved',`Réservation ${getEquip(r.equip_id)?.name} × ${r.qty} (${getAsso(r.asso_id)?.name}) approuvée`);
   renderSidebar(); renderApprovals();
-  const m1=mailtoApproved(r,note), m2=mailtoOwner(r);
-  if(m1) window.location.href=m1;
-  if(m2) setTimeout(()=>window.open(m2,'_blank'),900);
-  toast('✓ Approuvée — votre client mail s\'ouvre',4000);
+  const notified=await notifyReservation(r.id,'approved',note);
+  toast(notified?'✓ Approuvée — email envoyé':'✓ Approuvée — email non envoyé',4000);
 }
 async function rejectReserv(id){
   const r=state.data.reservations.find(r=>r.id===id); if(!r) return;
   const note=document.getElementById('note-'+id)?.value||'';
+  const ok=await dbUpdate('reservations', id, {status:'rejected', notes:note}); if(!ok) return;
   r.notes=note; r.status='rejected';
-  await dbUpdate('reservations', id, {status:'rejected', notes:note});
   await addHistory('rejected',`Réservation ${getEquip(r.equip_id)?.name} × ${r.qty} (${getAsso(r.asso_id)?.name}) refusée`);
   renderSidebar(); renderApprovals();
-  const m=mailtoRejected(r,note); if(m) window.location.href=m;
-  toast('Refusée — votre client mail s\'ouvre',4000);
+  const notified=await notifyReservation(r.id,'rejected',note);
+  toast(notified?'Refusée — email envoyé':'Refusée — email non envoyé',4000);
 }
 
 // ===== ASSOCIATIONS =====
@@ -382,7 +362,7 @@ function renderAssociations(){
   const counts={}; state.data.reservations.forEach(r=>{counts[r.asso_id]=(counts[r.asso_id]||0)+1;});
   document.getElementById('assos-tbody').innerHTML=state.data.associations.map(a=>{
     const initials=a.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
-    return `<tr><td><div style="display:flex;align-items:center;gap:10px;"><div class="avatar" style="background:${a.color}22;color:${a.color};">${initials}</div><strong>${a.name}</strong></div></td><td>${a.referent}</td><td><a href="mailto:${a.email}" style="color:var(--info);">${a.email}</a></td><td>${a.phone}</td><td>${counts[a.id]||0}</td><td><span class="badge ${a.active?'badge-active':'badge-inactive'}">${a.active?'Active':'Suspendue'}</span></td><td><button class="btn btn-sm" onclick="openEditAsso('${a.id}')">Modifier</button> <button class="btn btn-sm" onclick="toggleAsso('${a.id}')">${a.active?'Suspendre':'Réactiver'}</button></td></tr>`;
+    return `<tr><td><div style="display:flex;align-items:center;gap:10px;"><div class="avatar" style="background:${a.color}22;color:${a.color};">${initials}</div><strong>${a.name}</strong></div></td><td>${a.referent}</td><td style="color:var(--info);">${a.email}</td><td>${a.phone}</td><td>${counts[a.id]||0}</td><td><span class="badge ${a.active?'badge-active':'badge-inactive'}">${a.active?'Active':'Suspendue'}</span></td><td><button class="btn btn-sm" onclick="openEditAsso('${a.id}')">Modifier</button> <button class="btn btn-sm" onclick="toggleAsso('${a.id}')">${a.active?'Suspendre':'Réactiver'}</button></td></tr>`;
   }).join('');
 }
 async function toggleAsso(id){
@@ -397,7 +377,7 @@ function renderAnnuaire(){
   const actives=state.data.associations.filter(a=>a.active);
   document.getElementById('annuaire-list').innerHTML=actives.length?actives.map(a=>{
     const initials=a.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
-    return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px;display:flex;align-items:center;gap:16px;"><div class="avatar" style="width:44px;height:44px;font-size:16px;background:${a.color}22;color:${a.color};flex-shrink:0;">${initials}</div><div style="flex:1;"><div style="font-size:14px;font-weight:600;color:var(--text);">${a.name}</div><div style="font-size:12px;color:var(--text2);margin-top:2px;">Référent : ${a.referent}</div></div><div style="text-align:right;flex-shrink:0;"><div><a href="mailto:${a.email}" style="font-size:13px;color:var(--accent);text-decoration:none;">✉️ ${a.email}</a></div><div style="font-size:12px;color:var(--text2);margin-top:4px;">📞 ${a.phone||'—'}</div></div></div>`;
+    return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px;display:flex;align-items:center;gap:16px;"><div class="avatar" style="width:44px;height:44px;font-size:16px;background:${a.color}22;color:${a.color};flex-shrink:0;">${initials}</div><div style="flex:1;"><div style="font-size:14px;font-weight:600;color:var(--text);">${a.name}</div><div style="font-size:12px;color:var(--text2);margin-top:2px;">Référent : ${a.referent}</div></div><div style="text-align:right;flex-shrink:0;"><div style="font-size:13px;color:var(--accent);">✉️ ${a.email}</div><div style="font-size:12px;color:var(--text2);margin-top:4px;">📞 ${a.phone||'—'}</div></div></div>`;
   }).join(''):`<div style="text-align:center;padding:48px;color:var(--text3);"><div style="font-size:36px;margin-bottom:12px;">🏢</div><div>Aucune association enregistrée.</div></div>`;
 }
 
@@ -439,7 +419,7 @@ async function submitNewReservation(){
   state.data.reservations.push(r);
   await addHistory('created',`Nouvelle réservation ${getEquip(equipId)?.name} × ${qty} (${getAsso(assoId)?.name}) soumise`);
   closeModal('modal-new-reserv'); renderSidebar();
-  const notified=await notifyReservationOwner(r.id);
+  const notified=await notifyReservation(r.id,'pending');
   toast(notified?'✓ Demande soumise — propriétaire du matériel averti':'✓ Demande soumise — notification du propriétaire non envoyée',5000);
   navigate('reservations');
 }
