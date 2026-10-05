@@ -129,13 +129,13 @@ function currentAsso() { return state.currentUser?.asso ? state.data.association
 // ===== DISPONIBILITÉ =====
 function computeAvailable(equipId, excludeId=null) {
   const eq=getEquip(equipId); if(!eq) return 0;
-  const used=state.data.reservations.filter(r=>r.equip_id===equipId&&r.status!=='rejected'&&r.id!==excludeId).reduce((s,r)=>s+r.qty,0);
+  const used=state.data.reservations.filter(r=>r.equip_id===equipId&&!['rejected','cancelled'].includes(r.status)&&r.id!==excludeId).reduce((s,r)=>s+r.qty,0);
   return Math.max(0, eq.total - used);
 }
 function computeAvailableForPeriod(equipId, ds, de, excludeId=null) {
   const eq=getEquip(equipId); if(!eq) return 0;
   const used=state.data.reservations
-    .filter(r=>r.equip_id===equipId&&r.status!=='rejected'&&r.id!==excludeId)
+    .filter(r=>r.equip_id===equipId&&!['rejected','cancelled'].includes(r.status)&&r.id!==excludeId)
     .filter(r=>!(r.date_end<ds||r.date_start>de))
     .reduce((s,r)=>s+r.qty,0);
   return Math.max(0, eq.total - used);
@@ -226,7 +226,7 @@ function renderDashboard() {
     }).join('')||'<div style="padding:16px;text-align:center;color:var(--text3);font-size:13px;">✓ Aucune validation en attente</div>';
   } else { dashAdmin.style.display='none'; }
 }
-function statusLabel(s){return{pending:'En attente',approved:'Approuvée',rejected:'Refusée'}[s]||s;}
+function statusLabel(s){return{pending:'En attente',approved:'Approuvée',rejected:'Refusée',cancelled:'Annulée'}[s]||s;}
 function reservationRequestId(reservation){return reservation.request_id||reservation.id;}
 function groupReservationRequests(reservations){
   const groups=new Map();
@@ -262,7 +262,7 @@ function renderCalendar() {
   document.getElementById('cal-month-label').textContent=`${mNames[mo]} ${yr}`;
   let dow=new Date(yr,mo,1).getDay(); dow=dow===0?6:dow-1;
   const days=new Date(yr,mo+1,0).getDate(), today=todayStr();
-  const rs=state.data.reservations.filter(r=>r.status!=='rejected');
+  const rs=state.data.reservations.filter(r=>!['rejected','cancelled'].includes(r.status));
   let html='';
   for(let i=0;i<dow;i++) html+='<div class="cal-cell other-month"></div>';
   for(let d=1;d<=days;d++){
@@ -304,20 +304,30 @@ function renderReservations() {
   data=[...data].reverse();
   document.getElementById('reservations-tbody').innerHTML=data.map(r=>{
     const eq=getEquip(r.equip_id),as=getAsso(r.asso_id);
-    return `<tr><td><strong>${eq?.name||'?'}</strong></td>${isAdmin()?`<td>${as?.name||'?'}</td>`:''}<td>${fmtDate(r.date_start)}</td><td>${fmtDate(r.date_end)}</td><td>${r.qty}</td><td><span class="badge badge-${r.status}">${statusLabel(r.status)}</span></td><td><button class="btn btn-sm" onclick="showReservDetail('${r.id}')">Voir</button>${r.status==='pending'&&!isAdmin()?`<button class="btn btn-sm btn-danger" onclick="cancelReserv('${r.id}')">Annuler</button>`:''}${isAdmin()&&r.status==='pending'?`<button class="btn btn-sm btn-primary" onclick="quickApprove('${reservationRequestId(r)}')">✓</button>`:''}</td></tr>`;
+    const actions=!isAdmin()&&r.status==='pending'?`<button class="btn btn-sm btn-danger" onclick="cancelReserv('${r.id}')">Annuler</button>`:!isAdmin()&&['approved','rejected'].includes(r.status)?`<button class="btn btn-sm btn-danger" onclick="deleteReserv('${r.id}')">Supprimer</button>`:isAdmin()&&r.status==='pending'?`<button class="btn btn-sm btn-primary" onclick="quickApprove('${reservationRequestId(r)}')">✓</button>`:'';
+    return `<tr><td><strong>${eq?.name||'?'}</strong></td>${isAdmin()?`<td>${as?.name||'?'}</td>`:''}<td>${fmtDate(r.date_start)}</td><td>${fmtDate(r.date_end)}</td><td>${r.qty}</td><td><span class="badge badge-${r.status}">${statusLabel(r.status)}</span></td><td><button class="btn btn-sm" onclick="showReservDetail('${r.id}')">Voir</button>${actions}</td></tr>`;
   }).join('')||`<tr><td colspan="7"><div style="text-align:center;padding:32px;color:var(--text3);">📋 Aucune réservation</div></td></tr>`;
   const th=document.getElementById('th-asso'); if(th) th.style.display=isAdmin()?'':'none';
 }
 function setReservFilter(f){state.reservFilter=f;document.querySelectorAll('#reserv-filters .filter-btn').forEach(b=>b.classList.toggle('active',b.dataset.filter===f));renderReservations();}
 async function cancelReserv(id){
-  if(!confirm('Annuler cette réservation ?')) return;
-  const r=state.data.reservations.find(r=>r.id===id); if(!r) return;
-  const requestId=reservationRequestId(r),items=state.data.reservations.filter(item=>reservationRequestId(item)===requestId&&item.status==='pending');
-  const {error}=await db.from('reservations').update({status:'rejected'}).in('id',items.map(item=>item.id));
-  if(error){toast('Erreur : '+error.message,5000);return;}
-  items.forEach(item=>item.status='rejected');
-  await addHistory('rejected',`Demande de réservation de ${items.length} matériel(aux) annulée`);
-  renderReservations(); toast('Réservation annulée');
+  const r=state.data.reservations.find(r=>r.id===id&&r.status==='pending'); if(!r) return;
+  const equipment=getEquip(r.equip_id);
+  if(!confirm(`Annuler uniquement ${equipment?.name||'cette ligne'} × ${r.qty} ? Les autres lignes de la demande resteront inchangées.`)) return;
+  const ok=await dbUpdate('reservations',id,{status:'cancelled'}); if(!ok) return;
+  r.status='cancelled';
+  await addHistory('cancelled',`Ligne de réservation ${equipment?.name||'Matériel'} × ${r.qty} annulée par ${state.currentUser?.name||'?'}`);
+  renderSidebar(); renderReservations(); toast('Ligne de réservation annulée');
+}
+async function deleteReserv(id){
+  const r=state.data.reservations.find(r=>r.id===id&&['approved','rejected'].includes(r.status)); if(!r) return;
+  const equipment=getEquip(r.equip_id);
+  const approvedWarning=r.status==='approved'?' Cette réservation est approuvée; sa suppression libèrera le matériel sans prévenir l’association prêteuse.':'';
+  if(!confirm(`Supprimer définitivement ${equipment?.name||'cette réservation'} × ${r.qty} ? Les autres lignes de la demande ne seront pas supprimées.${approvedWarning}`)) return;
+  const ok=await dbDelete('reservations',id); if(!ok) return;
+  state.data.reservations=state.data.reservations.filter(item=>item.id!==id);
+  await addHistory('rejected',`Ligne de réservation ${equipment?.name||'Matériel'} × ${r.qty} supprimée par ${state.currentUser?.name||'?'}`);
+  renderSidebar(); renderReservations(); toast('Ligne de réservation supprimée');
 }
 function showReservDetail(id){
   const r=state.data.reservations.find(r=>r.id===id); if(!r) return;
@@ -388,7 +398,7 @@ function renderAnnuaire(){
 
 // ===== HISTORY =====
 function renderHistory(){
-  const icons={approved:'✅',rejected:'❌',created:'📋',stock:'📦',settings:'⚙️'};
+  const icons={approved:'✅',rejected:'❌',cancelled:'↩️',created:'📋',stock:'📦',settings:'⚙️'};
   document.getElementById('history-list').innerHTML=state.data.history.map(h=>`<div class="log-item"><div class="log-icon ${h.type}">${icons[h.type]||'ℹ️'}</div><div class="log-body"><div class="log-text">${h.text}</div><div class="log-time">${h.created_at?.slice(0,16).replace('T',' ')} · ${h.user_name}</div></div></div>`).join('')||'<div style="text-align:center;padding:32px;color:var(--text3);">Aucun historique</div>';
 }
 

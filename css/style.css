@@ -160,6 +160,8 @@ tbody tr:hover td { background: var(--surface2); }
 .badge-approved::before { background: var(--accent); }
 .badge-rejected { background: var(--danger-light); color: var(--danger-dark); }
 .badge-rejected::before { background: var(--danger); }
+.badge-cancelled { background: var(--surface2); color: var(--text3); }
+.badge-cancelled::before { background: var(--text3); }
 .badge-available { background: var(--accent-light); color: var(--accent-dark); }
 .badge-low { background: var(--warn-light); color: var(--warn-dark); }
 .badge-unavailable { background: var(--danger-light); color: var(--danger-dark); }
