@@ -40,68 +40,95 @@ exports.handler = async event => {
     return response(500, { error: `Variables Netlify manquantes : ${missing.join(', ')}` });
   }
 
-  let reservationId, requestedStatus, note;
+  let requestId, requestedStatus, note;
   try {
-    ({ reservationId, status: requestedStatus, note } = JSON.parse(event.body || '{}'));
+    ({ requestId, status: requestedStatus, note } = JSON.parse(event.body || '{}'));
   } catch {
     return response(400, { error: 'Requête invalide' });
   }
-  if (typeof reservationId !== 'string' || !reservationId) return response(400, { error: 'Réservation manquante' });
+  if (typeof requestId !== 'string' || !requestId) return response(400, { error: 'Demande manquante' });
   if (!['pending', 'approved', 'rejected'].includes(requestedStatus)) return response(400, { error: 'Statut invalide' });
 
   try {
-    const [reservation] = await fetchRows('reservations', { id: `eq.${reservationId}` });
-    if (!reservation) return response(404, { error: 'Réservation introuvable' });
-    if (reservation.status !== requestedStatus) return response(409, { error: 'Le statut de la réservation a changé' });
+    let reservations = await fetchRows('reservations', { request_id: `eq.${requestId}` });
+    if (!reservations.length) reservations = await fetchRows('reservations', { id: `eq.${requestId}` });
+    if (!reservations.length) return response(404, { error: 'Demande introuvable' });
+    if (reservations.some(reservation => reservation.status !== requestedStatus)) return response(409, { error: 'Le statut de la demande a changé' });
+    if (requestedStatus === 'pending') return response(200, { sent: false, reason: 'awaiting-admin-approval' });
 
-    const [equipment] = await fetchRows('equipment', { id: `eq.${reservation.equip_id}` });
-    const [requester] = await fetchRows('associations', { id: `eq.${reservation.asso_id}` });
-    const owner = equipment?.owner_asso_id
-      ? (await fetchRows('associations', { id: `eq.${equipment.owner_asso_id}` }))[0]
-      : null;
-    const recipients = requestedStatus === 'pending'
-      ? [owner?.email]
-      : requestedStatus === 'approved'
-        ? [requester?.email, owner?.email]
-        : [requester?.email];
-    const to = [...new Set(recipients.filter(Boolean))];
-    if (!to.length) return response(200, { sent: false, reason: 'recipient-email-missing' });
+    const first = reservations[0];
+    const equipmentIds = [...new Set(reservations.map(reservation => reservation.equip_id).filter(Boolean))];
+    const equipment = equipmentIds.length
+      ? await fetchRows('equipment', { id: `in.(${equipmentIds.join(',')})` })
+      : [];
+    const equipmentById = new Map(equipment.map(item => [item.id, item]));
+    const associationIds = [...new Set([
+      first.asso_id,
+      ...equipment.map(item => item.owner_asso_id),
+    ].filter(Boolean))];
+    const associations = associationIds.length
+      ? await fetchRows('associations', { id: `in.(${associationIds.join(',')})` })
+      : [];
+    const associationById = new Map(associations.map(association => [association.id, association]));
+    const requester = associationById.get(first.asso_id);
+    const deliveries = requestedStatus === 'rejected'
+      ? (requester?.email ? [{ to: requester.email, owner: null, reservations }] : [])
+      : [...reservations.reduce((groups, reservation) => {
+        const ownerId = equipmentById.get(reservation.equip_id)?.owner_asso_id;
+        if (!ownerId) return groups;
+        if (!groups.has(ownerId)) groups.set(ownerId, []);
+        groups.get(ownerId).push(reservation);
+        return groups;
+      }, new Map())].map(([ownerId, items]) => ({
+        to: associationById.get(ownerId)?.email,
+        owner: associationById.get(ownerId),
+        reservations: items,
+      })).filter(delivery => delivery.to);
+    if (!deliveries.length) {
+      return response(200, { sent: false, reason: requestedStatus === 'approved' ? 'no-lending-association-email' : 'requester-email-missing' });
+    }
 
     const appName = 'FédéraMat';
-    const labels = { pending: 'Nouvelle demande', approved: 'Réservation approuvée', rejected: 'Réservation refusée' };
-    const subject = `[${appName}] ${labels[requestedStatus]} — ${equipment?.name || 'matériel'}`;
-    const text = [
-      'Bonjour,',
-      '',
-      requestedStatus === 'pending'
-        ? 'Une demande de réservation concerne votre matériel.'
-        : requestedStatus === 'approved'
-          ? 'La demande de réservation a été approuvée.'
-          : 'La demande de réservation a été refusée.',
-      '',
-      `Équipement : ${equipment?.name || 'Matériel'} × ${reservation.qty}`,
-      `Association demandeuse : ${requester?.name || 'Non renseignée'}`,
-      `Du : ${formatDate(reservation.date_start)} au ${formatDate(reservation.date_end)}`,
-      reservation.reason ? `Motif : ${reservation.reason}` : '',
-      note ? `${requestedStatus === 'rejected' ? 'Motif du refus' : 'Message'} : ${note}` : '',
-      '',
-      requestedStatus === 'pending' ? 'La demande est en attente de validation dans FédéraMat.' : '',
-    ].filter(Boolean).join('\n');
-
     const transporter = nodemailer.createTransport({
       host: 'smtp.gmail.com',
       port: 465,
       secure: true,
       auth: { user: GMAIL_USER, pass: GMAIL_APP_PASSWORD },
     });
-    await transporter.sendMail({
-      from: { name: appName, address: GMAIL_USER },
-      to,
-      subject,
-      text,
-    });
+    for (const delivery of deliveries) {
+      const items = delivery.reservations.map(reservation => {
+        const item = equipmentById.get(reservation.equip_id);
+        return `- ${item?.name || 'Matériel'} × ${reservation.qty}`;
+      });
+      const text = [
+        'Bonjour,',
+        '',
+        requestedStatus === 'approved'
+          ? 'La demande de matériel ci-dessous a été approuvée. Voici le récapitulatif du matériel dont votre association est propriétaire.'
+          : 'La demande de réservation ci-dessous a été refusée par l’administrateur.',
+        '',
+        `Association demandeuse : ${requester?.name || 'Non renseignée'}`,
+        `Du : ${formatDate(first.date_start)} au ${formatDate(first.date_end)}`,
+        `Lieu : ${first.location || 'Non renseigné'}`,
+        `Motif : ${first.reason || 'Non renseigné'}`,
+        '',
+        'Matériel concerné :',
+        ...items,
+        note ? `${requestedStatus === 'rejected' ? 'Motif du refus' : 'Message'} : ${note}` : '',
+        '',
+      ].filter(Boolean).join('\n');
+      const subject = requestedStatus === 'approved'
+        ? `[${appName}] Matériel à prêter — ${requester?.name || 'Demande approuvée'}`
+        : `[${appName}] Demande de réservation refusée`;
+      await transporter.sendMail({
+        from: { name: appName, address: GMAIL_USER },
+        to: delivery.to,
+        subject,
+        text,
+      });
+    }
     transporter.close();
-    return response(200, { sent: true });
+    return response(200, { sent: true, recipientCount: deliveries.length });
   } catch (error) {
     console.error('Notification réservation :', error);
     if (error.code === 'EAUTH' || error.responseCode === 535) {

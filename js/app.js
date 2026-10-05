@@ -148,18 +148,18 @@ function toast(msg, d=3500) {
 }
 
 // ===== NOTIFICATIONS EMAIL =====
-async function notifyReservation(reservationId, status, note='') {
+async function notifyReservation(requestId, status, note='') {
   try {
     const response = await fetch('/.netlify/functions/notify-reservation', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ reservationId, status, note }),
+      body: JSON.stringify({ requestId, status, note }),
     });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || `Erreur de la fonction email (${response.status})`);
     return result;
   } catch (error) {
-    console.error('Notification propriétaire :', error);
+    console.error('Notification demande :', error);
     return { sent: false, error: error.message };
   }
 }
@@ -191,14 +191,14 @@ function renderSidebar() {
   rb.className='user-role-badge '+(isAdmin()?'role-admin':'role-asso');
   document.getElementById('sidebar-asso-line').textContent = asso?asso.name:'';
   document.querySelectorAll('.admin-only').forEach(el=>el.style.display=isAdmin()?'':'none');
-  const pending=state.data.reservations.filter(r=>r.status==='pending').length;
+  const pending=groupReservationRequests(state.data.reservations.filter(r=>r.status==='pending')).length;
   const badge=document.getElementById('badge-approvals');
   badge.textContent=pending; badge.style.display=pending>0?'':'none';
 }
 
 // ===== DASHBOARD =====
 function renderDashboard() {
-  const d=state.data, pending=d.reservations.filter(r=>r.status==='pending');
+  const d=state.data, pending=groupReservationRequests(d.reservations.filter(r=>r.status==='pending'));
   const myR=isAdmin()?d.reservations:d.reservations.filter(r=>r.asso_id===state.currentUser.asso);
   document.getElementById('stat-equip').textContent        = d.equipment.length;
   document.getElementById('stat-reservations').textContent = myR.length;
@@ -219,22 +219,40 @@ function renderDashboard() {
   const dashAdmin=document.getElementById('dash-admin');
   if (isAdmin()) {
     dashAdmin.style.display='';
-    document.getElementById('dash-pending').innerHTML=pending.slice(0,3).map(r=>{
-      const eq=getEquip(r.equip_id),as=getAsso(r.asso_id);
-      return `<div class="approval-card" style="padding:12px;"><div class="approval-header"><div><div class="approval-title" style="font-size:13px;">${eq?.name||'?'} × ${r.qty}</div><div class="approval-meta">${as?.name||'?'} · ${fmtDate(r.date_start)}→${fmtDate(r.date_end)}</div></div><span class="badge badge-pending">En attente</span></div><div class="approval-actions"><button class="btn btn-primary btn-sm" onclick="quickApprove('${r.id}')">✓ Approuver</button><button class="btn btn-sm" onclick="navigate('approvals')">Détails</button></div></div>`;
+    document.getElementById('dash-pending').innerHTML=pending.slice(0,3).map(request=>{
+      const first=request.reservations[0],as=getAsso(first.asso_id);
+      const summary=request.reservations.map(r=>`${getEquip(r.equip_id)?.name||'?'} × ${r.qty}`).join(', ');
+      return `<div class="approval-card" style="padding:12px;"><div class="approval-header"><div><div class="approval-title" style="font-size:13px;">${summary}</div><div class="approval-meta">${as?.name||'?'} · ${fmtDate(first.date_start)}→${fmtDate(first.date_end)}</div></div><span class="badge badge-pending">En attente</span></div><div class="approval-actions"><button class="btn btn-primary btn-sm" onclick="quickApprove('${request.id}')">✓ Approuver la demande</button><button class="btn btn-sm" onclick="navigate('approvals')">Détails</button></div></div>`;
     }).join('')||'<div style="padding:16px;text-align:center;color:var(--text3);font-size:13px;">✓ Aucune validation en attente</div>';
   } else { dashAdmin.style.display='none'; }
 }
 function statusLabel(s){return{pending:'En attente',approved:'Approuvée',rejected:'Refusée'}[s]||s;}
+function reservationRequestId(reservation){return reservation.request_id||reservation.id;}
+function groupReservationRequests(reservations){
+  const groups=new Map();
+  reservations.forEach(reservation=>{
+    const requestId=reservationRequestId(reservation);
+    if(!groups.has(requestId)) groups.set(requestId,{id:requestId,reservations:[]});
+    groups.get(requestId).reservations.push(reservation);
+  });
+  return [...groups.values()];
+}
 
-async function quickApprove(id) {
-  const r=state.data.reservations.find(r=>r.id===id); if(!r) return;
-  const ok=await dbUpdate('reservations', id, {status:'approved'}); if(!ok) return;
-  r.status='approved';
-  await addHistory('approved',`Réservation ${getEquip(r.equip_id)?.name} × ${r.qty} (${getAsso(r.asso_id)?.name}) approuvée`);
-  renderSidebar(); renderDashboard();
-  const notified=await notifyReservation(r.id,'approved');
-  toast(notified.sent?'✓ Approuvée — email envoyé':`✓ Approuvée — email non envoyé : ${notified.error||notified.reason||'erreur inconnue'}`,7000);
+async function quickApprove(requestId) { await decideReservationRequest(requestId,'approved'); }
+async function decideReservationRequest(requestId,status){
+  const reservations=state.data.reservations.filter(r=>reservationRequestId(r)===requestId&&r.status==='pending');
+  if(!reservations.length) return;
+  const note=document.getElementById('note-'+requestId)?.value||'';
+  const ids=reservations.map(r=>r.id);
+  const {error}=await db.from('reservations').update({status,notes:note}).in('id',ids);
+  if(error){toast('Erreur : '+error.message,5000);console.error(error);return;}
+  reservations.forEach(r=>{r.status=status;r.notes=note;});
+  const requester=getAsso(reservations[0].asso_id)?.name||'Association';
+  await addHistory(''+status,`Demande de ${reservations.length} matériel(aux) (${requester}) ${status==='approved'?'approuvée':'refusée'}`);
+  renderSidebar(); renderPage(state.currentPage);
+  const notified=await notifyReservation(requestId,status,note);
+  const outcome=notified.sent?`${notified.recipientCount||1} email(s) envoyé(s)`:notified.reason==='no-lending-association-email'?'aucune association prêteuse à prévenir':`email non envoyé : ${notified.error||notified.reason||'aucun destinataire'}`;
+  toast(`${status==='approved'?'✓ Demande approuvée':'Demande refusée'} — ${outcome}`,7000);
 }
 
 // ===== CALENDAR =====
@@ -286,7 +304,7 @@ function renderReservations() {
   data=[...data].reverse();
   document.getElementById('reservations-tbody').innerHTML=data.map(r=>{
     const eq=getEquip(r.equip_id),as=getAsso(r.asso_id);
-    return `<tr><td><strong>${eq?.name||'?'}</strong></td>${isAdmin()?`<td>${as?.name||'?'}</td>`:''}<td>${fmtDate(r.date_start)}</td><td>${fmtDate(r.date_end)}</td><td>${r.qty}</td><td><span class="badge badge-${r.status}">${statusLabel(r.status)}</span></td><td><button class="btn btn-sm" onclick="showReservDetail('${r.id}')">Voir</button>${r.status==='pending'&&!isAdmin()?`<button class="btn btn-sm btn-danger" onclick="cancelReserv('${r.id}')">Annuler</button>`:''}${isAdmin()&&r.status==='pending'?`<button class="btn btn-sm btn-primary" onclick="quickApprove('${r.id}')">✓</button>`:''}</td></tr>`;
+    return `<tr><td><strong>${eq?.name||'?'}</strong></td>${isAdmin()?`<td>${as?.name||'?'}</td>`:''}<td>${fmtDate(r.date_start)}</td><td>${fmtDate(r.date_end)}</td><td>${r.qty}</td><td><span class="badge badge-${r.status}">${statusLabel(r.status)}</span></td><td><button class="btn btn-sm" onclick="showReservDetail('${r.id}')">Voir</button>${r.status==='pending'&&!isAdmin()?`<button class="btn btn-sm btn-danger" onclick="cancelReserv('${r.id}')">Annuler</button>`:''}${isAdmin()&&r.status==='pending'?`<button class="btn btn-sm btn-primary" onclick="quickApprove('${reservationRequestId(r)}')">✓</button>`:''}</td></tr>`;
   }).join('')||`<tr><td colspan="7"><div style="text-align:center;padding:32px;color:var(--text3);">📋 Aucune réservation</div></td></tr>`;
   const th=document.getElementById('th-asso'); if(th) th.style.display=isAdmin()?'':'none';
 }
@@ -294,68 +312,55 @@ function setReservFilter(f){state.reservFilter=f;document.querySelectorAll('#res
 async function cancelReserv(id){
   if(!confirm('Annuler cette réservation ?')) return;
   const r=state.data.reservations.find(r=>r.id===id); if(!r) return;
-  r.status='rejected';
-  await dbUpdate('reservations', id, {status:'rejected'});
-  await addHistory('rejected',`Réservation ${getEquip(r.equip_id)?.name} annulée`);
+  const requestId=reservationRequestId(r),items=state.data.reservations.filter(item=>reservationRequestId(item)===requestId&&item.status==='pending');
+  const {error}=await db.from('reservations').update({status:'rejected'}).in('id',items.map(item=>item.id));
+  if(error){toast('Erreur : '+error.message,5000);return;}
+  items.forEach(item=>item.status='rejected');
+  await addHistory('rejected',`Demande de réservation de ${items.length} matériel(aux) annulée`);
   renderReservations(); toast('Réservation annulée');
 }
 function showReservDetail(id){
   const r=state.data.reservations.find(r=>r.id===id); if(!r) return;
   const eq=getEquip(r.equip_id),as=getAsso(r.asso_id),owner=eq?.owner_asso_id?getAsso(eq.owner_asso_id):null;
-  document.getElementById('detail-content').innerHTML=`<div style="margin-bottom:12px;"><span class="badge badge-${r.status}">${statusLabel(r.status)}</span></div><table style="width:100%;font-size:13px;border-collapse:collapse;"><tr><td style="padding:7px 0;color:var(--text3);width:40%;border-bottom:1px solid var(--border);">Équipement</td><td style="border-bottom:1px solid var(--border);font-weight:500;">${eq?.name||'?'}</td></tr>${owner?`<tr><td style="padding:7px 0;color:var(--text3);border-bottom:1px solid var(--border);">Propriétaire</td><td style="border-bottom:1px solid var(--border);color:var(--purple);">🏢 ${owner.name}</td></tr>`:''}<tr><td style="padding:7px 0;color:var(--text3);border-bottom:1px solid var(--border);">Association</td><td style="border-bottom:1px solid var(--border);">${as?.name||'?'}</td></tr><tr><td style="padding:7px 0;color:var(--text3);border-bottom:1px solid var(--border);">Quantité</td><td style="border-bottom:1px solid var(--border);">${r.qty}</td></tr><tr><td style="padding:7px 0;color:var(--text3);border-bottom:1px solid var(--border);">Du</td><td style="border-bottom:1px solid var(--border);">${fmtDate(r.date_start)}</td></tr><tr><td style="padding:7px 0;color:var(--text3);border-bottom:1px solid var(--border);">Au</td><td style="border-bottom:1px solid var(--border);">${fmtDate(r.date_end)}</td></tr><tr><td style="padding:7px 0;color:var(--text3);">Motif</td><td>${r.reason||'—'}</td></tr>${r.notes?`<tr><td style="padding:7px 0;color:var(--text3);">Notes admin</td><td style="color:var(--accent-dark);">${r.notes}</td></tr>`:''}</table>`;
+  document.getElementById('detail-content').innerHTML=`<div style="margin-bottom:12px;"><span class="badge badge-${r.status}">${statusLabel(r.status)}</span></div><table style="width:100%;font-size:13px;border-collapse:collapse;"><tr><td style="padding:7px 0;color:var(--text3);width:40%;border-bottom:1px solid var(--border);">Équipement</td><td style="border-bottom:1px solid var(--border);font-weight:500;">${eq?.name||'?'}</td></tr>${owner?`<tr><td style="padding:7px 0;color:var(--text3);border-bottom:1px solid var(--border);">Propriétaire</td><td style="border-bottom:1px solid var(--border);color:var(--purple);">🏢 ${owner.name}</td></tr>`:''}<tr><td style="padding:7px 0;color:var(--text3);border-bottom:1px solid var(--border);">Association</td><td style="border-bottom:1px solid var(--border);">${as?.name||'?'}</td></tr><tr><td style="padding:7px 0;color:var(--text3);border-bottom:1px solid var(--border);">Quantité</td><td style="border-bottom:1px solid var(--border);">${r.qty}</td></tr><tr><td style="padding:7px 0;color:var(--text3);border-bottom:1px solid var(--border);">Du</td><td style="border-bottom:1px solid var(--border);">${fmtDate(r.date_start)}</td></tr><tr><td style="padding:7px 0;color:var(--text3);border-bottom:1px solid var(--border);">Au</td><td style="border-bottom:1px solid var(--border);">${fmtDate(r.date_end)}</td></tr><tr><td style="padding:7px 0;color:var(--text3);border-bottom:1px solid var(--border);">Lieu</td><td style="border-bottom:1px solid var(--border);">${r.location||'—'}</td></tr><tr><td style="padding:7px 0;color:var(--text3);">Motif</td><td>${r.reason||'—'}</td></tr>${r.notes?`<tr><td style="padding:7px 0;color:var(--text3);">Notes admin</td><td style="color:var(--accent-dark);">${r.notes}</td></tr>`:''}</table>`;
   openModal('modal-detail');
 }
 
 // ===== APPROVALS =====
 function renderApprovals(){
-  const pending=state.data.reservations.filter(r=>r.status==='pending');
-  document.getElementById('approvals-list').innerHTML=pending.map(r=>{
-    const eq=getEquip(r.equip_id),as=getAsso(r.asso_id),avail=computeAvailableForPeriod(r.equip_id,r.date_start,r.date_end,r.id),owner=eq?.owner_asso_id?getAsso(eq.owner_asso_id):null;
-    return `<div class="approval-card" id="acard-${r.id}">
+  const pending=groupReservationRequests(state.data.reservations.filter(r=>r.status==='pending'));
+  document.getElementById('approvals-list').innerHTML=pending.map(request=>{
+    const reservations=request.reservations,first=reservations[0],asso=getAsso(first.asso_id);
+    const conflicts=reservations.filter(r=>computeAvailableForPeriod(r.equip_id,r.date_start,r.date_end,r.id)<r.qty);
+    const equipmentList=reservations.map(r=>{
+      const eq=getEquip(r.equip_id),owner=eq?.owner_asso_id?getAsso(eq.owner_asso_id):null;
+      return `<li>${eq?.name||'?'} × ${r.qty} <span style="color:var(--text3);">(${owner?.name||'Matériel fédéral'})</span></li>`;
+    }).join('');
+    return `<div class="approval-card" id="acard-${request.id}">
       <div class="approval-header">
         <div>
-          <div class="approval-title">${eq?.name||'?'} × ${r.qty} — ${as?.name||'?'}</div>
-          <div class="approval-meta">Du ${fmtDate(r.date_start)} au ${fmtDate(r.date_end)}</div>
-          <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;">
-            <span class="cat-tag ${{event:'cat-event',sport:'cat-sport',tech:'cat-tech'}[eq?.cat]||''}">${{event:'Événementiel',sport:'Sportif',tech:'Technique'}[eq?.cat]||''}</span>
-            ${owner?`<span style="font-size:11px;color:var(--purple);background:var(--purple-light);padding:2px 8px;border-radius:20px;">🏢 Propriétaire : ${owner.name}</span>`:'<span style="font-size:11px;color:var(--text3);background:var(--surface2);padding:2px 8px;border-radius:20px;">🏛️ Matériel fédéral</span>'}
-          </div>
+          <div class="approval-title">Demande de ${asso?.name||'?'}</div>
+          <div class="approval-meta">Du ${fmtDate(first.date_start)} au ${fmtDate(first.date_end)} · ${reservations.length} matériel(aux)</div>
+          <div class="approval-meta">Lieu : ${first.location||'—'}</div>
         </div>
         <span class="badge badge-pending">En attente</span>
       </div>
-      ${avail<r.qty?`<div class="alert alert-danger" style="margin:8px 0;">⚠️ Conflit : ${avail} unités disponibles, ${r.qty} demandées.</div>`:''}
-      <div class="approval-reason">💬 ${r.reason||'Aucun motif.'}</div>
+      ${conflicts.map(r=>`<div class="alert alert-danger" style="margin:8px 0;">⚠️ ${getEquip(r.equip_id)?.name||'Matériel'} : disponibilité modifiée, ${computeAvailableForPeriod(r.equip_id,r.date_start,r.date_end,r.id)} unité(s) disponible(s), ${r.qty} demandée(s).</div>`).join('')}
+      <ul class="approval-reason">${equipmentList}</ul>
+      <div class="approval-reason">Motif : ${first.reason||'—'}</div>
       <div style="margin-bottom:10px;">
-        <label class="form-label">Message pour l'email (optionnel)</label>
-        <input type="text" class="form-control" id="note-${r.id}" placeholder="Ex : Récupérer au local A avant 9h.">
+        <label class="form-label">Message à joindre à l'email (optionnel)</label>
+        <input type="text" class="form-control" id="note-${request.id}" placeholder="Précision pour le demandeur ou les prêteurs">
       </div>
       <div class="approval-actions">
-        <button class="btn btn-primary btn-sm" onclick="approveReserv('${r.id}')">✓ Approuver</button>
-        <button class="btn btn-danger btn-sm" onclick="rejectReserv('${r.id}')">✗ Refuser</button>
+        <button class="btn btn-primary btn-sm" onclick="approveReserv('${request.id}')">✓ Approuver la demande</button>
+        <button class="btn btn-danger btn-sm" onclick="rejectReserv('${request.id}')">✗ Refuser la demande</button>
       </div>
     </div>`;
   }).join('')||`<div style="text-align:center;padding:48px;color:var(--text3);"><div style="font-size:36px;margin-bottom:12px;">✅</div><div>Aucune validation en attente</div></div>`;
 }
-async function approveReserv(id){
-  const r=state.data.reservations.find(r=>r.id===id); if(!r) return;
-  const note=document.getElementById('note-'+id)?.value||'';
-  const ok=await dbUpdate('reservations', id, {status:'approved', notes:note}); if(!ok) return;
-  r.notes=note; r.status='approved';
-  await addHistory('approved',`Réservation ${getEquip(r.equip_id)?.name} × ${r.qty} (${getAsso(r.asso_id)?.name}) approuvée`);
-  renderSidebar(); renderApprovals();
-  const notified=await notifyReservation(r.id,'approved',note);
-  toast(notified.sent?'✓ Approuvée — email envoyé':`✓ Approuvée — email non envoyé : ${notified.error||notified.reason||'erreur inconnue'}`,7000);
-}
-async function rejectReserv(id){
-  const r=state.data.reservations.find(r=>r.id===id); if(!r) return;
-  const note=document.getElementById('note-'+id)?.value||'';
-  const ok=await dbUpdate('reservations', id, {status:'rejected', notes:note}); if(!ok) return;
-  r.notes=note; r.status='rejected';
-  await addHistory('rejected',`Réservation ${getEquip(r.equip_id)?.name} × ${r.qty} (${getAsso(r.asso_id)?.name}) refusée`);
-  renderSidebar(); renderApprovals();
-  const notified=await notifyReservation(r.id,'rejected',note);
-  toast(notified.sent?'Refusée — email envoyé':`Refusée — email non envoyé : ${notified.error||notified.reason||'erreur inconnue'}`,7000);
-}
+async function approveReserv(requestId){await decideReservationRequest(requestId,'approved');}
+async function rejectReserv(requestId){await decideReservationRequest(requestId,'rejected');}
 
 // ===== ASSOCIATIONS =====
 function renderAssociations(){
@@ -393,34 +398,80 @@ function closeModal(id){document.getElementById(id).classList.remove('open');}
 
 // ===== NOUVELLE RÉSERVATION =====
 function openNewReservation(dateStr=null, equipId=null){
-  const sel=document.getElementById('new-equip');
-  sel.innerHTML=state.data.equipment.map(eq=>`<option value="${eq.id}">${eq.name}</option>`).join('');
-  if(equipId) sel.value=equipId;
   const assoSel=document.getElementById('new-asso'), assoLabel=document.getElementById('new-asso-label');
   if(isAdmin()){ assoSel.style.display=''; assoLabel.style.display=''; assoSel.innerHTML=state.data.associations.filter(a=>a.active).map(a=>`<option value="${a.id}">${a.name}</option>`).join(''); }
   else { assoSel.style.display='none'; assoLabel.style.display='none'; }
-  if(dateStr){document.getElementById('new-start').value=dateStr;document.getElementById('new-end').value=dateStr;}
-  document.getElementById('new-qty').value=1; document.getElementById('new-reason').value='';
+  document.getElementById('new-start').value=dateStr||todayStr();
+  document.getElementById('new-end').value=dateStr||todayStr();
+  document.getElementById('new-equipment-list').innerHTML='';
+  document.getElementById('new-location').value='';
+  document.getElementById('new-reason').value='';
+  renderAvailableEquipment(equipId);
   openModal('modal-new-reserv'); updateAvailabilityPreview();
 }
+function renderAvailableEquipment(preselectedId=null){
+  const list=document.getElementById('new-equipment-list');
+  const start=document.getElementById('new-start').value,end=document.getElementById('new-end').value;
+  const previous=new Map([...list.querySelectorAll('.reservation-equipment-item')].map(row=>{
+    const checkbox=row.querySelector('input[type="checkbox"]');
+    return [checkbox.value,{checked:checkbox.checked,qty:row.querySelector('.reservation-equipment-qty').value}];
+  }));
+  if(!start||!end||start>end){
+    list.innerHTML='<div style="padding:12px;color:var(--text3);">Choisissez une période valide pour afficher le matériel disponible.</div>';
+    return;
+  }
+  const available=state.data.equipment.map(eq=>({eq,qty:computeAvailableForPeriod(eq.id,start,end)}));
+  list.innerHTML=available.map(({eq,qty})=>{
+    const owner=eq.owner_asso_id?getAsso(eq.owner_asso_id):null,selection=previous.get(eq.id);
+    const selected=qty>0&&(selection?selection.checked:eq.id===preselectedId);
+    const amount=qty?Math.min(Math.max(parseInt(selection?.qty||'1',10)||1,1),qty):1;
+    return `<div class="reservation-equipment-item">
+      <label class="reservation-equipment-choice" for="reserve-equip-${eq.id}">
+        <input type="checkbox" id="reserve-equip-${eq.id}" value="${eq.id}" ${selected?'checked':''} ${qty===0?'disabled':''} onchange="updateAvailabilityPreview()">
+        <span><span class="reservation-equipment-name">${eq.name}</span><span class="reservation-equipment-meta">${owner?owner.name:'Matériel fédéral'} · ${qty} disponible(s) sur ${eq.total}</span></span>
+      </label>
+      <input class="reservation-equipment-qty" type="number" min="1" max="${Math.max(qty,1)}" value="${amount}" aria-label="Quantité pour ${eq.name}" ${selected?'':'disabled'}>
+    </div>`;
+  }).join('')||'<div style="padding:12px;color:var(--text3);">Aucun matériel disponible sur cette période.</div>';
+}
 function updateAvailabilityPreview(){
-  const equipId=document.getElementById('new-equip').value,start=document.getElementById('new-start').value,end=document.getElementById('new-end').value,el=document.getElementById('avail-preview');
-  if(equipId&&start&&end){const avail=computeAvailableForPeriod(equipId,start,end),eq=getEquip(equipId);el.className=`alert alert-${avail===0?'danger':avail<=2?'warn':'success'}`;el.textContent=`Disponible sur cette période : ${avail} / ${eq.total} unités`;el.style.display='';}else{el.style.display='none';}
+  const start=document.getElementById('new-start').value,end=document.getElementById('new-end').value,el=document.getElementById('avail-preview');
+  renderAvailableEquipment();
+  const rows=[...document.querySelectorAll('#new-equipment-list .reservation-equipment-item')];
+  rows.forEach(row=>{
+    const checkbox=row.querySelector('input[type="checkbox"]'),qty=row.querySelector('.reservation-equipment-qty');
+    qty.disabled=!checkbox.checked;
+  });
+  const selected=rows.filter(row=>row.querySelector('input[type="checkbox"]').checked).length;
+  const validPeriod=start&&end&&start<=end;
+  if(!validPeriod){el.className='alert alert-warn';el.textContent='La date de fin doit être égale ou postérieure à la date de début.';el.style.display='';}
+  else if(selected){el.className='alert alert-success';el.textContent=`${selected} équipement${selected>1?'s':''} sélectionné${selected>1?'s':''} sur cette période.`;el.style.display='';}
+  else{
+    const available=rows.filter(row=>!row.querySelector('input[type="checkbox"]').disabled).length;
+    el.className=available?'alert':'alert alert-warn';
+    el.textContent=available?`${available} équipement${available>1?'s':''} disponible${available>1?'s':''} parmi ${rows.length} en stock.`:'Aucun équipement disponible sur cette période.';
+    el.style.display='';
+  }
 }
 async function submitNewReservation(){
-  const equipId=document.getElementById('new-equip').value,assoId=isAdmin()?document.getElementById('new-asso').value:state.currentUser.asso;
-  const qty=parseInt(document.getElementById('new-qty').value)||1,start=document.getElementById('new-start').value,end=document.getElementById('new-end').value,reason=document.getElementById('new-reason').value.trim();
-  if(!equipId||!assoId||!start||!end){toast('Veuillez remplir tous les champs obligatoires.');return;}
+  const assoId=isAdmin()?document.getElementById('new-asso').value:state.currentUser.asso;
+  const start=document.getElementById('new-start').value,end=document.getElementById('new-end').value,location=document.getElementById('new-location').value.trim(),reason=document.getElementById('new-reason').value.trim();
+  const selected=[...document.querySelectorAll('#new-equipment-list .reservation-equipment-item')]
+    .map(row=>({checkbox:row.querySelector('input[type="checkbox"]'),qtyInput:row.querySelector('.reservation-equipment-qty')}))
+    .filter(item=>item.checkbox.checked)
+    .map(item=>({equipId:item.checkbox.value,qty:parseInt(item.qtyInput.value,10)}));
+  if(!selected.length||!assoId||!start||!end||!location||!reason){toast('Renseignez les dates, le lieu, le motif et cochez au moins un matériel.');return;}
   if(start>end){toast('La date de début doit être avant la date de fin.');return;}
-  const avail=computeAvailableForPeriod(equipId,start,end);
-  if(qty>avail&&!confirm(`Attention : ${avail} unités disponibles. Soumettre quand même ?`)) return;
-  const r={id:uid(),equip_id:equipId,qty,asso_id:assoId,date_start:start,date_end:end,reason,status:'pending',created_at:new Date().toISOString(),notes:''};
-  const ok=await dbInsert('reservations', r); if(!ok) return;
-  state.data.reservations.push(r);
-  await addHistory('created',`Nouvelle réservation ${getEquip(equipId)?.name} × ${qty} (${getAsso(assoId)?.name}) soumise`);
+  const invalid=selected.find(item=>!Number.isInteger(item.qty)||item.qty<1||item.qty>computeAvailableForPeriod(item.equipId,start,end));
+  if(invalid){const available=computeAvailableForPeriod(invalid.equipId,start,end);toast(`La quantité pour ${getEquip(invalid.equipId).name} est limitée à ${available} disponible(s).`);return;}
+  const createdAt=new Date().toISOString();
+  const requestId=uid();
+  const reservations=selected.map(item=>({id:uid(),request_id:requestId,equip_id:item.equipId,qty:item.qty,asso_id:assoId,date_start:start,date_end:end,location,reason,status:'pending',created_at:createdAt,notes:''}));
+  const ok=await dbInsert('reservations', reservations); if(!ok) return;
+  state.data.reservations.push(...reservations);
+  await addHistory('created',`Demande de réservation de ${reservations.length} matériel(aux) (${getAsso(assoId)?.name}) soumise`);
   closeModal('modal-new-reserv'); renderSidebar();
-  const notified=await notifyReservation(r.id,'pending');
-  toast(notified.sent?'✓ Demande soumise — propriétaire du matériel averti':`✓ Demande soumise — email non envoyé : ${notified.error||notified.reason||'erreur inconnue'}`,7000);
+  toast('✓ Demande soumise à la validation de l’administrateur.',5000);
   navigate('reservations');
 }
 

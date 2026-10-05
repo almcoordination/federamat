@@ -244,16 +244,16 @@
 <div class="modal-backdrop" id="modal-new-reserv">
   <div class="modal">
     <div class="modal-title">Nouvelle demande de réservation</div>
-    <div id="avail-preview" class="alert" style="display:none;margin-bottom:14px;"></div>
-    <label class="form-label" id="new-asso-label">Association</label>
-    <div class="form-group"><select class="form-control" id="new-asso"></select></div>
-    <div class="form-group"><label class="form-label">Équipement *</label><select class="form-control" id="new-equip" onchange="updateAvailabilityPreview()"></select></div>
-    <div class="form-group"><label class="form-label">Quantité *</label><input type="number" class="form-control" id="new-qty" value="1" min="1"></div>
     <div class="form-row">
       <div class="form-group"><label class="form-label">Date de début *</label><input type="date" class="form-control" id="new-start" onchange="updateAvailabilityPreview()"></div>
       <div class="form-group"><label class="form-label">Date de fin *</label><input type="date" class="form-control" id="new-end" onchange="updateAvailabilityPreview()"></div>
     </div>
-    <div class="form-group"><label class="form-label">Motif</label><textarea class="form-control" id="new-reason" placeholder="Décrivez l'événement ou l'usage prévu…"></textarea></div>
+    <div class="form-group"><label class="form-label" for="new-location">Lieu *</label><input type="text" class="form-control" id="new-location" placeholder="Adresse, salle ou commune" required></div>
+    <div class="form-group"><label class="form-label" for="new-reason">Motif *</label><textarea class="form-control" id="new-reason" placeholder="Décrivez l’événement ou l’usage prévu…" required></textarea></div>
+    <div id="avail-preview" class="alert" style="display:none;margin-bottom:14px;"></div>
+    <div class="form-group"><label class="form-label">Matériel en stock à cocher *</label><div id="new-equipment-list" class="reservation-equipment-list"></div></div>
+    <label class="form-label" id="new-asso-label">Association demandeuse</label>
+    <div class="form-group"><select class="form-control" id="new-asso"></select></div>
     <div class="modal-footer">
       <button class="btn" onclick="closeModal('modal-new-reserv')">Annuler</button>
       <button class="btn btn-primary" onclick="submitNewReservation()">Soumettre la demande</button>

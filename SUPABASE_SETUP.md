@@ -75,16 +75,19 @@ create table if not exists equipment (
 -- Table des réservations
 create table if not exists reservations (
   id text primary key,
+  request_id text,
   equip_id text references equipment(id) on delete cascade,
   asso_id text references associations(id) on delete cascade,
   qty integer default 1,
   date_start text,
   date_end text,
+  location text,
   reason text,
   status text default 'pending',
   notes text,
   created_at timestamptz default now()
 );
+create index if not exists reservations_request_id_idx on reservations(request_id);
 
 -- Table de l'historique
 create table if not exists history (
@@ -94,6 +97,14 @@ create table if not exists history (
   user_name text,
   created_at timestamptz default now()
 );
+```
+
+Si la table `reservations` existe déjà, exécutez aussi cette migration dans le SQL Editor :
+
+```sql
+alter table reservations add column if not exists request_id text;
+alter table reservations add column if not exists location text;
+create index if not exists reservations_request_id_idx on reservations(request_id);
 ```
 
 ## 4. Configurer les permissions (RLS)
@@ -149,3 +160,11 @@ Ouvrez `index.html` dans votre navigateur (ou hébergez les fichiers sur un serv
 - **Temps réel** : si l'admin crée un compte ou approuve une réservation,
   tous les utilisateurs connectés voient la mise à jour instantanément
 - Le compte admin par défaut est créé automatiquement au premier setup
+
+### Demande de réservation
+- Le formulaire demande les dates, le lieu et le motif, puis permet de cocher le matériel en stock.
+- L'administrateur approuve ou refuse la demande complète en une seule fois.
+- En cas de refus, le demandeur reçoit le récapitulatif de sa demande.
+- En cas d'approbation, chaque association propriétaire reçoit uniquement la liste du matériel qu'elle doit prêter.
+- Pour une base existante, appliquez la migration `request_id` et `location` décrite à l'étape 3.
+- La fonction Netlify d'envoi d'emails nécessite `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `GMAIL_USER` et `GMAIL_APP_PASSWORD` dans les variables d'environnement Netlify.

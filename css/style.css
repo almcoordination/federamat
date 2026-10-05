@@ -205,6 +205,14 @@ textarea.form-control { resize: vertical; min-height: 80px; }
 }
 .modal-title { font-size: 16px; font-weight: 600; margin-bottom: 18px; color: var(--text); }
 .modal-footer { display: flex; justify-content: flex-end; gap: 10px; margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--border); }
+.reservation-equipment-list { display: flex; flex-direction: column; gap: 7px; max-height: 230px; overflow-y: auto; }
+.reservation-equipment-item { display: grid; grid-template-columns: minmax(0, 1fr) 86px; align-items: center; gap: 12px; padding: 9px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.reservation-equipment-choice { display: flex; align-items: center; gap: 9px; min-width: 0; }
+.reservation-equipment-choice input { accent-color: var(--accent); flex-shrink: 0; }
+.reservation-equipment-name { overflow-wrap: anywhere; font-size: 13px; font-weight: 500; }
+.reservation-equipment-meta { display: block; margin-top: 2px; color: var(--text3); font-size: 11px; }
+.reservation-equipment-qty { width: 86px; padding: 7px 8px; border: 1px solid var(--border2); border-radius: var(--radius-sm); background: var(--surface); color: var(--text); }
+.reservation-equipment-qty:disabled { opacity: .45; }
 
 /* ===== FILTERS ===== */
 .filter-bar { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
