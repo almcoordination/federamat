@@ -321,18 +321,25 @@ async function cancelReserv(id){
 }
 async function deleteReserv(id){
   const r=state.data.reservations.find(r=>r.id===id&&['approved','rejected'].includes(r.status)); if(!r) return;
-  const equipment=getEquip(r.equip_id);
-  const approvedWarning=r.status==='approved'?' Cette réservation est approuvée; sa suppression libèrera le matériel sans prévenir l’association prêteuse.':'';
-  if(!confirm(`Supprimer définitivement ${equipment?.name||'cette réservation'} × ${r.qty} ? Les autres lignes de la demande ne seront pas supprimées.${approvedWarning}`)) return;
-  const ok=await dbDelete('reservations',id); if(!ok) return;
-  state.data.reservations=state.data.reservations.filter(item=>item.id!==id);
-  await addHistory('rejected',`Ligne de réservation ${equipment?.name||'Matériel'} × ${r.qty} supprimée par ${state.currentUser?.name||'?'}`);
-  renderSidebar(); renderReservations(); toast('Ligne de réservation supprimée');
+  const requestId=reservationRequestId(r);
+  const items=state.data.reservations.filter(item=>reservationRequestId(item)===requestId);
+  const summary=items.map(item=>`${getEquip(item.equip_id)?.name||'Matériel'} × ${item.qty}`).join(', ');
+  if(!confirm(`Supprimer définitivement cette demande de la base ? Matériel concerné : ${summary}.`)) return;
+  const {error}=await db.from('reservations').delete().in('id',items.map(item=>item.id));
+  if(error){toast('Erreur : '+error.message,5000);console.error(error);return;}
+  state.data.reservations=state.data.reservations.filter(item=>reservationRequestId(item)!==requestId);
+  await addHistory('deleted',`Demande de réservation (${summary}) supprimée par ${state.currentUser?.name||'?'}`);
+  renderSidebar(); renderReservations(); toast('Demande supprimée de la base');
 }
 function showReservDetail(id){
   const r=state.data.reservations.find(r=>r.id===id); if(!r) return;
-  const eq=getEquip(r.equip_id),as=getAsso(r.asso_id),owner=eq?.owner_asso_id?getAsso(eq.owner_asso_id):null;
-  document.getElementById('detail-content').innerHTML=`<div style="margin-bottom:12px;"><span class="badge badge-${r.status}">${statusLabel(r.status)}</span></div><table style="width:100%;font-size:13px;border-collapse:collapse;"><tr><td style="padding:7px 0;color:var(--text3);width:40%;border-bottom:1px solid var(--border);">Équipement</td><td style="border-bottom:1px solid var(--border);font-weight:500;">${eq?.name||'?'}</td></tr>${owner?`<tr><td style="padding:7px 0;color:var(--text3);border-bottom:1px solid var(--border);">Propriétaire</td><td style="border-bottom:1px solid var(--border);color:var(--purple);">🏢 ${owner.name}</td></tr>`:''}<tr><td style="padding:7px 0;color:var(--text3);border-bottom:1px solid var(--border);">Association</td><td style="border-bottom:1px solid var(--border);">${as?.name||'?'}</td></tr><tr><td style="padding:7px 0;color:var(--text3);border-bottom:1px solid var(--border);">Quantité</td><td style="border-bottom:1px solid var(--border);">${r.qty}</td></tr><tr><td style="padding:7px 0;color:var(--text3);border-bottom:1px solid var(--border);">Du</td><td style="border-bottom:1px solid var(--border);">${fmtDate(r.date_start)}</td></tr><tr><td style="padding:7px 0;color:var(--text3);border-bottom:1px solid var(--border);">Au</td><td style="border-bottom:1px solid var(--border);">${fmtDate(r.date_end)}</td></tr><tr><td style="padding:7px 0;color:var(--text3);border-bottom:1px solid var(--border);">Lieu</td><td style="border-bottom:1px solid var(--border);">${r.location||'—'}</td></tr><tr><td style="padding:7px 0;color:var(--text3);">Motif</td><td>${r.reason||'—'}</td></tr>${r.notes?`<tr><td style="padding:7px 0;color:var(--text3);">Notes admin</td><td style="color:var(--accent-dark);">${r.notes}</td></tr>`:''}</table>`;
+  const requestItems=state.data.reservations.filter(item=>reservationRequestId(item)===reservationRequestId(r));
+  const as=getAsso(r.asso_id),statuses=[...new Set(requestItems.map(item=>statusLabel(item.status)))].join(', ');
+  const equipmentList=requestItems.map(item=>{
+    const eq=getEquip(item.equip_id),owner=eq?.owner_asso_id?getAsso(eq.owner_asso_id):null;
+    return `<li>${eq?.name||'?'} × ${item.qty}${owner?` — prêteur : ${owner.name}`:''} <span class="badge badge-${item.status}">${statusLabel(item.status)}</span></li>`;
+  }).join('');
+  document.getElementById('detail-content').innerHTML=`<div style="margin-bottom:12px;"><span class="badge badge-${r.status}">${statuses}</span></div><table style="width:100%;font-size:13px;border-collapse:collapse;"><tr><td style="padding:7px 0;color:var(--text3);width:40%;border-bottom:1px solid var(--border);">Association</td><td style="border-bottom:1px solid var(--border);">${as?.name||'?'}</td></tr><tr><td style="padding:7px 0;color:var(--text3);border-bottom:1px solid var(--border);">Matériel demandé</td><td style="border-bottom:1px solid var(--border);"><ul style="margin:0;padding-left:18px;">${equipmentList}</ul></td></tr><tr><td style="padding:7px 0;color:var(--text3);border-bottom:1px solid var(--border);">Du</td><td style="border-bottom:1px solid var(--border);">${fmtDate(r.date_start)}</td></tr><tr><td style="padding:7px 0;color:var(--text3);border-bottom:1px solid var(--border);">Au</td><td style="border-bottom:1px solid var(--border);">${fmtDate(r.date_end)}</td></tr><tr><td style="padding:7px 0;color:var(--text3);border-bottom:1px solid var(--border);">Lieu</td><td style="border-bottom:1px solid var(--border);">${r.location||'—'}</td></tr><tr><td style="padding:7px 0;color:var(--text3);">Motif</td><td>${r.reason||'—'}</td></tr>${r.notes?`<tr><td style="padding:7px 0;color:var(--text3);">Notes admin</td><td style="color:var(--accent-dark);">${r.notes}</td></tr>`:''}</table>`;
   openModal('modal-detail');
 }
 
@@ -398,7 +405,7 @@ function renderAnnuaire(){
 
 // ===== HISTORY =====
 function renderHistory(){
-  const icons={approved:'✅',rejected:'❌',cancelled:'↩️',created:'📋',stock:'📦',settings:'⚙️'};
+  const icons={approved:'✅',rejected:'❌',cancelled:'↩️',deleted:'🗑️',created:'📋',stock:'📦',settings:'⚙️'};
   document.getElementById('history-list').innerHTML=state.data.history.map(h=>`<div class="log-item"><div class="log-icon ${h.type}">${icons[h.type]||'ℹ️'}</div><div class="log-body"><div class="log-text">${h.text}</div><div class="log-time">${h.created_at?.slice(0,16).replace('T',' ')} · ${h.user_name}</div></div></div>`).join('')||'<div style="text-align:center;padding:32px;color:var(--text3);">Aucun historique</div>';
 }
 
