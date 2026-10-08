@@ -13,6 +13,7 @@ let state = {
   currentPage: 'dashboard',
   calMonth: new Date(),
   stockFilter: 'all',
+  stockDate: todayStr(),
   reservFilter: 'all',
 };
 
@@ -20,7 +21,7 @@ let state = {
 function getEquip(id) { return state.data.equipment.find(e => e.id === id); }
 function getAsso(id)  { return state.data.associations.find(a => a.id === id); }
 function fmtDate(d)   { if (!d) return '—'; const [y,m,day]=d.slice(0,10).split('-'); return `${day}/${m}/${y}`; }
-function todayStr()   { return new Date().toISOString().slice(0,10); }
+function todayStr()   { const today=new Date(); return `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`; }
 function uid()        { return 'x'+Math.random().toString(36).slice(2,9); }
 function cfg()        { return state.data.settings; }
 
@@ -129,7 +130,11 @@ function currentAsso() { return state.currentUser?.asso ? state.data.association
 // ===== DISPONIBILITÉ =====
 function computeAvailable(equipId, excludeId=null) {
   const eq=getEquip(equipId); if(!eq) return 0;
-  const used=state.data.reservations.filter(r=>r.equip_id===equipId&&!['rejected','cancelled'].includes(r.status)&&r.id!==excludeId).reduce((s,r)=>s+r.qty,0);
+  const today=todayStr();
+  const used=state.data.reservations
+    .filter(r=>r.equip_id===equipId&&!['rejected','cancelled'].includes(r.status)&&r.id!==excludeId)
+    .filter(r=>!(r.date_end<today||r.date_start>today))
+    .reduce((s,r)=>s+r.qty,0);
   return Math.max(0, eq.total - used);
 }
 function computeAvailableForPeriod(equipId, ds, de, excludeId=null) {
@@ -288,14 +293,16 @@ function calDayClick(d){openNewReservation(d);}
 // ===== STOCK =====
 function renderStock() {
   const f=state.stockFilter, catMap={event:'Événementiel',sport:'Sportif',tech:'Technique'}, catCls={event:'cat-event',sport:'cat-sport',tech:'cat-tech'};
+  document.getElementById('stock-date').value=state.stockDate;
   document.getElementById('stock-tbody').innerHTML=state.data.equipment.filter(eq=>f==='all'||eq.cat===f).map(eq=>{
-    const avail=computeAvailable(eq.id), pct=Math.round(avail/eq.total*100);
+    const avail=computeAvailableForPeriod(eq.id,state.stockDate,state.stockDate), pct=Math.round(avail/eq.total*100);
     const pcls=pct<20?'danger':pct<40?'warn':'', scls=avail===0?'unavailable':pct<30?'low':'available', stxt=avail===0?'Indisponible':pct<30?'Stock bas':'Disponible';
     const owner=eq.owner_asso_id?getAsso(eq.owner_asso_id):null;
     return `<tr><td><strong>${eq.name}</strong><div style="font-size:11px;color:var(--text3);">${eq.location||''}</div>${owner?`<div style="font-size:11px;color:var(--purple);">🏢 ${owner.name}</div>`:'<div style="font-size:11px;color:var(--text3);">🏛️ Fédération</div>'}</td><td><span class="cat-tag ${catCls[eq.cat]||''}">${catMap[eq.cat]||eq.cat}</span></td><td>${eq.total}</td><td><div class="progress-wrap"><span style="font-size:13px;font-weight:500;">${avail}</span><div class="progress-bar"><div class="progress-fill ${pcls}" style="width:${pct}%"></div></div><span class="progress-num">${pct}%</span></div></td><td><span class="badge badge-${scls}">${stxt}</span></td><td style="font-size:12px;color:var(--text3);">${eq.state}</td><td>${isAdmin()?`<button class="btn btn-sm" onclick="openEditEquip('${eq.id}')">Modifier</button>`:`<button class="btn btn-sm" onclick="openNewReservation(null,'${eq.id}')">Réserver</button>`}</td></tr>`;
   }).join('')||'<tr><td colspan="7" style="padding:24px;text-align:center;color:var(--text3);">Aucun équipement</td></tr>';
 }
 function setStockFilter(f){state.stockFilter=f;document.querySelectorAll('#stock-filters .filter-btn').forEach(b=>b.classList.toggle('active',b.dataset.filter===f));renderStock();}
+function setStockDate(date){if(!date)return;state.stockDate=date;renderStock();}
 
 // ===== RESERVATIONS =====
 function renderReservations() {

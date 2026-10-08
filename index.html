@@ -153,6 +153,8 @@
           <button class="filter-btn" data-filter="event" onclick="setStockFilter('event')">Événementiel</button>
           <button class="filter-btn" data-filter="sport" onclick="setStockFilter('sport')">Sportif</button>
           <button class="filter-btn" data-filter="tech" onclick="setStockFilter('tech')">Technique</button>
+          <label for="stock-date" class="form-label" style="margin:0 0 0 8px;">Disponibilité au</label>
+          <input type="date" class="form-control" id="stock-date" aria-label="Date de disponibilité du stock" onchange="setStockDate(this.value)" style="width:auto;">
           <button class="btn btn-primary btn-sm admin-only" style="margin-left:auto;" onclick="openAddEquip()">+ Ajouter équipement</button>
         </div>
         <div class="card"><div class="table-wrap"><table><thead><tr><th>Équipement</th><th>Catégorie</th><th>Total</th><th>Disponibilité</th><th>Statut</th><th>État</th><th>Action</th></tr></thead><tbody id="stock-tbody"></tbody></table></div></div>
