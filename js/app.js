@@ -206,20 +206,94 @@ function toast(msg, d=3500) {
 }
 
 // ===== NOTIFICATIONS EMAIL =====
-async function notifyReservation(requestId, status, note='', reservationId=null) {
-  try {
-    const response = await fetch('/.netlify/functions/notify-reservation', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ requestId, reservationId, status, note }),
-    });
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.error || `Erreur de la fonction email (${response.status})`);
-    return result;
-  } catch (error) {
-    console.error('Notification demande :', error);
-    return { sent: false, error: error.message };
+function reservationEmailDrafts(requestId, status, note='', reservationId=null) {
+  const reservations = state.data.reservations
+    .filter(reservation => reservationRequestId(reservation) === requestId)
+    .filter(reservation => !reservationId || reservation.id === reservationId);
+  if (!reservations.length || !['under_review','approved','rejected'].includes(status)) {
+    return { drafts: [], reason: 'no-recipient' };
   }
+
+  const first = reservations[0];
+  const requester = getAsso(first.asso_id);
+  const deliveries = [];
+  if (status === 'rejected') {
+    if (typeof requester?.email === 'string' && requester.email.trim()) {
+      deliveries.push({ to: requester.email.trim(), association: requester, reservations });
+    }
+  } else {
+    const ownerGroups = new Map();
+    reservations.forEach(reservation => {
+      const ownerId = getEquip(reservation.equip_id)?.owner_asso_id;
+      const owner = ownerId ? getAsso(ownerId) : null;
+      if (typeof owner?.email !== 'string' || !owner.email.trim()) return;
+      if (!ownerGroups.has(ownerId)) ownerGroups.set(ownerId, { to: owner.email.trim(), association: owner, reservations: [] });
+      ownerGroups.get(ownerId).reservations.push(reservation);
+    });
+    deliveries.push(...ownerGroups.values());
+  }
+
+  const reason = status === 'rejected' ? 'requester-email-missing' : 'no-lending-association-email';
+  const drafts = deliveries.map(delivery => {
+    const equipmentLines = delivery.reservations.map(reservation =>
+      `- ${getEquip(reservation.equip_id)?.name || 'Matériel'} × ${reservation.qty}`);
+    const text = [
+      `Bonjour ${delivery.association.referent || delivery.association.name || 'Madame, Monsieur'},`,
+      '',
+      status === 'under_review'
+        ? 'Une demande de réservation portant sur du matériel dont votre association est propriétaire est en cours d’examen par l’administrateur. Voici son récapitulatif.'
+        : status === 'approved'
+          ? 'La demande de matériel ci-dessous a été approuvée. Voici le récapitulatif du matériel dont votre association est propriétaire.'
+          : 'La demande de réservation ci-dessous a été refusée par l’administrateur.',
+      '',
+      `Association demandeuse : ${requester?.name || 'Non renseignée'}`,
+      `Du : ${fmtDate(first.date_start)} au ${fmtDate(first.date_end)}`,
+      `Lieu : ${first.location || 'Non renseigné'}`,
+      `Motif : ${first.reason || 'Non renseigné'}`,
+      '',
+      'Matériel concerné :',
+      ...equipmentLines,
+      note ? `${status === 'rejected' ? 'Motif du refus' : 'Message'} : ${note}` : '',
+      '',
+      'Cordialement,',
+      'FédéraMat',
+    ].filter(Boolean).join('\n');
+    const subject = status === 'under_review'
+      ? `[FédéraMat] Demande à examiner — ${requester?.name || 'Association'}`
+      : status === 'approved'
+        ? `[FédéraMat] Matériel à prêter — ${requester?.name || 'Demande approuvée'}`
+        : '[FédéraMat] Demande de réservation refusée';
+    const composeUrl = new URL('https://mail.google.com/mail/');
+    composeUrl.searchParams.set('view', 'cm');
+    composeUrl.searchParams.set('fs', '1');
+    composeUrl.searchParams.set('to', delivery.to);
+    composeUrl.searchParams.set('su', subject);
+    composeUrl.searchParams.set('body', text);
+    return {
+      to: delivery.to,
+      associationName: delivery.association.name || delivery.to,
+      href: composeUrl.href.length <= 8000 ? composeUrl.href : null,
+    };
+  });
+  return { drafts, reason };
+}
+function showReservationEmailDrafts(result, statusMessage) {
+  const list = document.getElementById('reservation-email-drafts');
+  if (!result.drafts.length) {
+    toast(`${statusMessage} — ${result.reason === 'requester-email-missing'
+      ? 'aucune adresse email renseignée pour l’association demandeuse.'
+      : 'aucune adresse email renseignée pour les associations prêteuses.'}`, 7000);
+    return;
+  }
+  list.innerHTML = result.drafts.map(draft => draft.href
+    ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid var(--border);">
+        <span style="font-size:13px;">${escapeHtml(draft.associationName)} <span style="color:var(--text3);">(${escapeHtml(draft.to)})</span></span>
+        <a class="btn btn-primary btn-sm" href="${escapeHtml(draft.href)}" target="_blank" rel="noopener">Ouvrir dans Gmail</a>
+      </div>`
+    : `<div class="alert alert-warn">Le brouillon pour ${escapeHtml(draft.associationName)} est trop long pour être ouvert dans Gmail.</div>`
+  ).join('');
+  openModal('modal-reservation-email');
+  toast(`${statusMessage} — ${result.drafts.length} brouillon${result.drafts.length > 1 ? 's' : ''} Gmail à préparer.`, 7000);
 }
 
 function broadcastRecipients() {
@@ -375,13 +449,8 @@ async function markReservationUnderReview(requestId){
   const requester=getAsso(reservations[0].asso_id)?.name||'Association';
   await addHistory('under_review',`Demande de ${reservations.length} matériel(aux) (${requester}) mise en cours d’examen`);
   renderSidebar(); renderPage(state.currentPage);
-  const notified=await notifyReservation(requestId,'under_review',note);
-  const outcome=notified.sent
-    ?`${notified.recipientCount||1} email(s) envoyé(s)`
-    :notified.reason==='no-lending-association-email'
-      ?'aucune association propriétaire à prévenir'
-      :`email non envoyé : ${notified.error||notified.reason||'aucun destinataire'}`;
-  toast(`Demande mise en cours d’examen — ${outcome}`,7000);
+  const drafts=reservationEmailDrafts(requestId,'under_review',note);
+  showReservationEmailDrafts(drafts,'Demande mise en cours d’examen');
 }
 // ===== CALENDAR =====
 function renderCalendar() {
@@ -535,13 +604,8 @@ async function decideReservationLine(reservationId,status){
   const requester=getAsso(reservation.asso_id)?.name||'Association';
   await addHistory(status,`Ligne ${equipment?.name||'Matériel'} × ${reservation.qty} de la demande de ${requester} ${status==='approved'?'validée':'refusée'}`);
   renderSidebar(); renderApprovals();
-  const notified=await notifyReservation(requestId,status,note,reservationId);
-  const outcome=notified.sent
-    ?`${notified.recipientCount||1} email(s) envoyé(s)`
-    :notified.reason==='no-lending-association-email'
-      ?'aucune association propriétaire à prévenir'
-      :`email non envoyé : ${notified.error||notified.reason||'aucun destinataire'}`;
-  toast(`Ligne ${equipment?.name||'Matériel'} ${status==='approved'?'validée':'refusée'} — ${outcome}`,7000);
+  const drafts=reservationEmailDrafts(requestId,status,note,reservationId);
+  showReservationEmailDrafts(drafts,`Ligne ${equipment?.name||'Matériel'} ${status==='approved'?'validée':'refusée'}`);
 }
 
 // ===== ASSOCIATIONS =====

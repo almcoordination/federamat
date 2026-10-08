@@ -23,17 +23,13 @@ npx serve .
 
 ### Option 3 — Hébergement web
 Uploadez tous les fichiers sur votre hébergeur (OVH, Infomaniak, etc.) ou déployez sur :
-- **Netlify** : connectez le dépôt GitHub (nécessaire pour publier la fonction d'envoi automatique)
+- **Netlify** : connectez le dépôt GitHub comme hébergement alternatif
 - **Vercel** : `vercel --prod`
 - **GitHub Pages** : push le dossier, activez Pages dans les paramètres
 
-### Emails automatiques de réservation (Netlify)
+### Emails et GitHub Pages
 
-Les notifications automatiques liées aux réservations utilisent la fonction serveur Netlify. Elles nécessitent de déployer `netlify/functions` avec Netlify et de configurer `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `GMAIL_USER` et `GMAIL_APP_PASSWORD` dans les variables d'environnement Netlify. Elles ne sont pas disponibles quand le site est hébergé uniquement sur GitHub Pages.
-
-Dans l’administration, la rubrique **Message collectif** ouvre un brouillon Gmail prérempli avec l’objet, le texte et les adresses des associations actives en copie cachée. L’administrateur vérifie le brouillon puis l’envoie manuellement. Cette fonction est compatible avec GitHub Pages et ne nécessite pas de backend.
-
-Pour les notifications automatiques Netlify, `GMAIL_USER` est l'adresse Gmail expéditrice et `GMAIL_APP_PASSWORD` son mot de passe d'application (pas le mot de passe habituel). `SUPABASE_SERVICE_ROLE_KEY` et `GMAIL_APP_PASSWORD` sont des secrets à configurer uniquement dans Netlify, jamais dans le code du navigateur.
+Les emails ne sont pas envoyés automatiquement. Après le passage d’une réservation en examen ou après une décision, l’application propose des brouillons Gmail adaptés aux associations prêteuses ou à l’association demandeuse. La rubrique **Message collectif** prépare aussi un brouillon adressé en copie cachée aux associations actives. Ouvrez chaque brouillon, vérifiez-le puis cliquez sur « Envoyer » dans Gmail. Ces fonctions sont compatibles avec GitHub Pages et ne nécessitent pas de backend.
 
 Si l'application affiche une erreur de connexion, ouvrez la console du navigateur (`F12`) : le message Supabase indique maintenant la table ou la permission en cause. Vérifiez aussi que l'URL du projet et la clé publique dans `js/app.js` correspondent au même projet.
 

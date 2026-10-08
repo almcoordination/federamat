@@ -175,8 +175,6 @@ Ouvrez `index.html` dans votre navigateur (ou hébergez les fichiers sur un serv
 ### Demande de réservation
 - Le formulaire demande les dates, le lieu et le motif, puis permet de cocher le matériel en stock.
 - L'administrateur approuve ou refuse la demande complète en une seule fois.
-- En cas de refus, le demandeur reçoit le récapitulatif de sa demande.
-- En cas d'approbation, chaque association propriétaire reçoit uniquement la liste du matériel qu'elle doit prêter.
+- Lors du passage en examen ou d'une décision, l’application propose des brouillons Gmail : les associations prêteuses reçoivent chacune leur récapitulatif du matériel concerné, et l’association demandeuse reçoit le récapitulatif en cas de refus. L’administrateur doit vérifier et envoyer chaque brouillon manuellement.
 - Pour une base existante, appliquez la migration `request_id` et `location` décrite à l'étape 3.
-- La fonction Netlify d'envoi d'emails nécessite `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `GMAIL_USER` et `GMAIL_APP_PASSWORD` dans les variables d'environnement Netlify.
-- La rubrique **Message collectif** ouvre un brouillon Gmail avec l’objet, le texte et les adresses des associations actives en copie cachée. L’administrateur doit vérifier le brouillon et l’envoyer manuellement ; cette fonction marche sur GitHub Pages sans Netlify.
+- La rubrique **Message collectif** ouvre un brouillon Gmail avec l’objet, le texte et les adresses des associations actives en copie cachée. Toutes les notifications email sont préparées dans Gmail et nécessitent un envoi manuel ; elles fonctionnent sur GitHub Pages sans Netlify.
