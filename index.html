@@ -115,7 +115,7 @@
           <div class="stat-card"><div class="stat-label">Équipements</div><div class="stat-value" id="stat-equip">—</div><div class="stat-sub">dans le stock fédéral</div></div>
           <div class="stat-card"><div class="stat-label">Réservations</div><div class="stat-value" id="stat-reservations">—</div><div class="stat-sub">au total</div></div>
           <div class="stat-card admin-stat"><div class="stat-label">Associations actives</div><div class="stat-value" id="stat-assos">—</div><div class="stat-sub">membres</div></div>
-          <div class="stat-card stat-accent"><div class="stat-label">En attente</div><div class="stat-value" id="stat-pending">—</div><div class="stat-sub">validations requises</div></div>
+          <div class="stat-card stat-accent"><div class="stat-label">Demandes à traiter</div><div class="stat-value" id="stat-pending">—</div><div class="stat-sub">validations requises</div></div>
         </div>
         <div class="two-col">
           <div class="card">
@@ -125,7 +125,7 @@
           <div class="card"><div class="card-header"><div class="card-title">⚠️ Alertes stock</div></div><div id="dash-alerts"></div></div>
         </div>
         <div id="dash-admin">
-          <div class="card"><div class="card-header"><div class="card-title">🔔 Demandes en attente</div><button class="btn btn-sm" onclick="navigate('approvals')">Voir tout</button></div><div id="dash-pending"></div></div>
+          <div class="card"><div class="card-header"><div class="card-title">🔔 Demandes à traiter</div><button class="btn btn-sm" onclick="navigate('approvals')">Voir tout</button></div><div id="dash-pending"></div></div>
         </div>
       </div>
 
@@ -164,8 +164,9 @@
       <div id="page-reservations" class="page">
         <div class="filter-bar" id="reserv-filters">
           <button class="filter-btn active" data-filter="all" onclick="setReservFilter('all')">Toutes</button>
-          <button class="filter-btn" data-filter="pending" onclick="setReservFilter('pending')">En attente</button>
-          <button class="filter-btn" data-filter="approved" onclick="setReservFilter('approved')">Approuvées</button>
+          <button class="filter-btn" data-filter="pending" onclick="setReservFilter('pending')">Demande enregistrée</button>
+          <button class="filter-btn" data-filter="under_review" onclick="setReservFilter('under_review')">En cours d’examen</button>
+          <button class="filter-btn" data-filter="approved" onclick="setReservFilter('approved')">Validées</button>
           <button class="filter-btn" data-filter="rejected" onclick="setReservFilter('rejected')">Refusées</button>
           <button class="filter-btn" data-filter="cancelled" onclick="setReservFilter('cancelled')">Annulées</button>
         </div>

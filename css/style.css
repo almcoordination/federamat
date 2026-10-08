@@ -156,6 +156,8 @@ tbody tr:hover td { background: var(--surface2); }
 .badge::before { content: ''; width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
 .badge-pending { background: var(--warn-light); color: var(--warn-dark); }
 .badge-pending::before { background: var(--warn); }
+.badge-under_review { background: var(--info-light, var(--accent-light)); color: var(--info-dark, var(--accent-dark)); }
+.badge-under_review::before { background: var(--info, var(--accent)); }
 .badge-approved { background: var(--accent-light); color: var(--accent-dark); }
 .badge-approved::before { background: var(--accent); }
 .badge-rejected { background: var(--danger-light); color: var(--danger-dark); }

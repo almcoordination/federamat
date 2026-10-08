@@ -196,14 +196,14 @@ function renderSidebar() {
   rb.className='user-role-badge '+(isAdmin()?'role-admin':'role-asso');
   document.getElementById('sidebar-asso-line').textContent = asso?asso.name:'';
   document.querySelectorAll('.admin-only').forEach(el=>el.style.display=isAdmin()?'':'none');
-  const pending=groupReservationRequests(state.data.reservations.filter(r=>r.status==='pending')).length;
+  const pending=groupReservationRequests(state.data.reservations.filter(r=>['pending','under_review'].includes(r.status))).length;
   const badge=document.getElementById('badge-approvals');
   badge.textContent=pending; badge.style.display=pending>0?'':'none';
 }
 
 // ===== DASHBOARD =====
 function renderDashboard() {
-  const d=state.data, pending=groupReservationRequests(d.reservations.filter(r=>r.status==='pending'));
+  const d=state.data, pending=groupReservationRequests(d.reservations.filter(r=>['pending','under_review'].includes(r.status)));
   const myR=isAdmin()?d.reservations:d.reservations.filter(r=>r.asso_id===state.currentUser.asso);
   document.getElementById('stat-equip').textContent        = d.equipment.length;
   document.getElementById('stat-reservations').textContent = myR.length;
@@ -227,11 +227,15 @@ function renderDashboard() {
     document.getElementById('dash-pending').innerHTML=pending.slice(0,3).map(request=>{
       const first=request.reservations[0],as=getAsso(first.asso_id);
       const summary=request.reservations.map(r=>`${getEquip(r.equip_id)?.name||'?'} × ${r.qty}`).join(', ');
-      return `<div class="approval-card" style="padding:12px;"><div class="approval-header"><div><div class="approval-title" style="font-size:13px;">${summary}</div><div class="approval-meta">${as?.name||'?'} · ${fmtDate(first.date_start)}→${fmtDate(first.date_end)}</div></div><span class="badge badge-pending">En attente</span></div><div class="approval-actions"><button class="btn btn-primary btn-sm" onclick="quickApprove('${request.id}')">✓ Approuver la demande</button><button class="btn btn-sm" onclick="navigate('approvals')">Détails</button></div></div>`;
-    }).join('')||'<div style="padding:16px;text-align:center;color:var(--text3);font-size:13px;">✓ Aucune validation en attente</div>';
+      const status=first.status;
+      const action=status==='pending'
+        ?`<button class="btn btn-primary btn-sm" onclick="markReservationUnderReview('${request.id}')">Examiner la demande</button>`
+        :`<button class="btn btn-primary btn-sm" onclick="navigate('approvals')">Poursuivre l’examen</button>`;
+      return `<div class="approval-card" style="padding:12px;"><div class="approval-header"><div><div class="approval-title" style="font-size:13px;">${summary}</div><div class="approval-meta">${as?.name||'?'} · ${fmtDate(first.date_start)}→${fmtDate(first.date_end)}</div></div><span class="badge badge-${status}">${statusLabel(status)}</span></div><div class="approval-actions">${action}<button class="btn btn-sm" onclick="navigate('approvals')">Détails</button></div></div>`;
+    }).join('')||'<div style="padding:16px;text-align:center;color:var(--text3);font-size:13px;">✓ Aucune demande à traiter</div>';
   } else { dashAdmin.style.display='none'; }
 }
-function statusLabel(s){return{pending:'En attente',approved:'Approuvée',rejected:'Refusée',cancelled:'Annulée'}[s]||s;}
+function statusLabel(s){return{pending:'Demande enregistrée',under_review:'En cours d’examen',approved:'Validée',rejected:'Refusée',cancelled:'Annulée'}[s]||s;}
 function reservationRequestId(reservation){return reservation.request_id||reservation.id;}
 function groupReservationRequests(reservations){
   const groups=new Map();
@@ -243,21 +247,37 @@ function groupReservationRequests(reservations){
   return [...groups.values()];
 }
 
-async function quickApprove(requestId) { await decideReservationRequest(requestId,'approved'); }
-async function decideReservationRequest(requestId,status){
+async function markReservationUnderReview(requestId){
   const reservations=state.data.reservations.filter(r=>reservationRequestId(r)===requestId&&r.status==='pending');
+  if(!isAdmin()||!reservations.length) return;
+  const ids=reservations.map(r=>r.id);
+  const {error}=await db.from('reservations').update({status:'under_review'}).in('id',ids);
+  if(error){toast('Erreur : '+error.message,5000);console.error(error);return;}
+  reservations.forEach(r=>{r.status='under_review';});
+  const requester=getAsso(reservations[0].asso_id)?.name||'Association';
+  await addHistory('under_review',`Demande de ${reservations.length} matériel(aux) (${requester}) mise en cours d’examen`);
+  renderSidebar(); renderPage(state.currentPage);
+  toast('Demande mise en cours d’examen');
+}
+async function decideReservationRequest(requestId,status){
+  if(!isAdmin()||!['approved','rejected'].includes(status)) return;
+  const reservations=state.data.reservations.filter(r=>reservationRequestId(r)===requestId&&['pending','under_review'].includes(r.status));
   if(!reservations.length) return;
+  if(status==='approved'&&reservations.some(r=>r.status!=='under_review')){
+    toast('La demande doit être mise en cours d’examen avant validation.');
+    return;
+  }
   const note=document.getElementById('note-'+requestId)?.value||'';
   const ids=reservations.map(r=>r.id);
   const {error}=await db.from('reservations').update({status,notes:note}).in('id',ids);
   if(error){toast('Erreur : '+error.message,5000);console.error(error);return;}
   reservations.forEach(r=>{r.status=status;r.notes=note;});
   const requester=getAsso(reservations[0].asso_id)?.name||'Association';
-  await addHistory(''+status,`Demande de ${reservations.length} matériel(aux) (${requester}) ${status==='approved'?'approuvée':'refusée'}`);
+  await addHistory(''+status,`Demande de ${reservations.length} matériel(aux) (${requester}) ${status==='approved'?'validée':'refusée'}`);
   renderSidebar(); renderPage(state.currentPage);
   const notified=await notifyReservation(requestId,status,note);
   const outcome=notified.sent?`${notified.recipientCount||1} email(s) envoyé(s)`:notified.reason==='no-lending-association-email'?'aucune association prêteuse à prévenir':`email non envoyé : ${notified.error||notified.reason||'aucun destinataire'}`;
-  toast(`${status==='approved'?'✓ Demande approuvée':'Demande refusée'} — ${outcome}`,7000);
+  toast(`${status==='approved'?'✓ Demande validée':'Demande refusée'} — ${outcome}`,7000);
 }
 
 // ===== CALENDAR =====
@@ -279,7 +299,7 @@ function renderCalendar() {
       ${dr.slice(0,3).map(r=>{
         const eq=getEquip(r.equip_id),as=getAsso(r.asso_id),isMine=r.asso_id===myAssoId;
         const label=`${eq?.name||'?'} · ${as?.name||'?'}`;
-        return `<div class="cal-event-pill ${r.status==='pending'?'pending':(isMine?'approved mine':'approved')}" title="${label}">${label}</div>`;
+        return `<div class="cal-event-pill ${['pending','under_review'].includes(r.status)?'pending':(isMine?'approved mine':'approved')}" title="${label}">${label}</div>`;
       }).join('')}
       ${dr.length>3?`<div style="font-size:9px;color:var(--text3);">+${dr.length-3} autres</div>`:''}
     </div>`;
@@ -311,14 +331,14 @@ function renderReservations() {
   data=[...data].reverse();
   document.getElementById('reservations-tbody').innerHTML=data.map(r=>{
     const eq=getEquip(r.equip_id),as=getAsso(r.asso_id);
-    const actions=!isAdmin()&&r.status==='pending'?`<button class="btn btn-sm btn-danger" onclick="cancelReserv('${r.id}')">Annuler</button>`:!isAdmin()&&['approved','rejected'].includes(r.status)?`<button class="btn btn-sm btn-danger" onclick="deleteReserv('${r.id}')">Supprimer</button>`:isAdmin()&&r.status==='pending'?`<button class="btn btn-sm btn-primary" onclick="quickApprove('${reservationRequestId(r)}')">✓</button>`:'';
+    const actions=!isAdmin()&&['pending','under_review'].includes(r.status)?`<button class="btn btn-sm btn-danger" onclick="cancelReserv('${r.id}')">Annuler</button>`:!isAdmin()&&['approved','rejected'].includes(r.status)?`<button class="btn btn-sm btn-danger" onclick="deleteReserv('${r.id}')">Supprimer</button>`:isAdmin()&&r.status==='pending'?`<button class="btn btn-sm btn-primary" onclick="markReservationUnderReview('${reservationRequestId(r)}')">Examiner</button>`:isAdmin()&&r.status==='under_review'?`<button class="btn btn-sm btn-primary" onclick="approveReserv('${reservationRequestId(r)}')">Valider</button>`:'';
     return `<tr><td><strong>${eq?.name||'?'}</strong></td>${isAdmin()?`<td>${as?.name||'?'}</td>`:''}<td>${fmtDate(r.date_start)}</td><td>${fmtDate(r.date_end)}</td><td>${r.qty}</td><td><span class="badge badge-${r.status}">${statusLabel(r.status)}</span></td><td><button class="btn btn-sm" onclick="showReservDetail('${r.id}')">Voir</button>${actions}</td></tr>`;
   }).join('')||`<tr><td colspan="7"><div style="text-align:center;padding:32px;color:var(--text3);">📋 Aucune réservation</div></td></tr>`;
   const th=document.getElementById('th-asso'); if(th) th.style.display=isAdmin()?'':'none';
 }
 function setReservFilter(f){state.reservFilter=f;document.querySelectorAll('#reserv-filters .filter-btn').forEach(b=>b.classList.toggle('active',b.dataset.filter===f));renderReservations();}
 async function cancelReserv(id){
-  const r=state.data.reservations.find(r=>r.id===id&&r.status==='pending'); if(!r) return;
+  const r=state.data.reservations.find(r=>r.id===id&&['pending','under_review'].includes(r.status)); if(!r) return;
   const equipment=getEquip(r.equip_id);
   if(!confirm(`Annuler uniquement ${equipment?.name||'cette ligne'} × ${r.qty} ? Les autres lignes de la demande resteront inchangées.`)) return;
   const ok=await dbUpdate('reservations',id,{status:'cancelled'}); if(!ok) return;
@@ -352,7 +372,7 @@ function showReservDetail(id){
 
 // ===== APPROVALS =====
 function renderApprovals(){
-  const pending=groupReservationRequests(state.data.reservations.filter(r=>r.status==='pending'));
+  const pending=groupReservationRequests(state.data.reservations.filter(r=>['pending','under_review'].includes(r.status)));
   document.getElementById('approvals-list').innerHTML=pending.map(request=>{
     const reservations=request.reservations,first=reservations[0],asso=getAsso(first.asso_id);
     const conflicts=reservations.filter(r=>computeAvailableForPeriod(r.equip_id,r.date_start,r.date_end,r.id)<r.qty);
@@ -367,7 +387,7 @@ function renderApprovals(){
           <div class="approval-meta">Du ${fmtDate(first.date_start)} au ${fmtDate(first.date_end)} · ${reservations.length} matériel(aux)</div>
           <div class="approval-meta">Lieu : ${first.location||'—'}</div>
         </div>
-        <span class="badge badge-pending">En attente</span>
+        <span class="badge badge-${first.status}">${statusLabel(first.status)}</span>
       </div>
       ${conflicts.map(r=>`<div class="alert alert-danger" style="margin:8px 0;">⚠️ ${getEquip(r.equip_id)?.name||'Matériel'} : disponibilité modifiée, ${computeAvailableForPeriod(r.equip_id,r.date_start,r.date_end,r.id)} unité(s) disponible(s), ${r.qty} demandée(s).</div>`).join('')}
       <ul class="approval-reason">${equipmentList}</ul>
@@ -377,7 +397,7 @@ function renderApprovals(){
         <input type="text" class="form-control" id="note-${request.id}" placeholder="Précision pour le demandeur ou les prêteurs">
       </div>
       <div class="approval-actions">
-        <button class="btn btn-primary btn-sm" onclick="approveReserv('${request.id}')">✓ Approuver la demande</button>
+        ${first.status==='pending'?`<button class="btn btn-primary btn-sm" onclick="markReservationUnderReview('${request.id}')">Examiner la demande</button>`:`<button class="btn btn-primary btn-sm" onclick="approveReserv('${request.id}')">✓ Valider la demande</button>`}
         <button class="btn btn-danger btn-sm" onclick="rejectReserv('${request.id}')">✗ Refuser la demande</button>
       </div>
     </div>`;
@@ -412,7 +432,7 @@ function renderAnnuaire(){
 
 // ===== HISTORY =====
 function renderHistory(){
-  const icons={approved:'✅',rejected:'❌',cancelled:'↩️',deleted:'🗑️',created:'📋',stock:'📦',settings:'⚙️'};
+  const icons={under_review:'🔎',approved:'✅',rejected:'❌',cancelled:'↩️',deleted:'🗑️',created:'📋',stock:'📦',settings:'⚙️'};
   document.getElementById('history-list').innerHTML=state.data.history.map(h=>`<div class="log-item"><div class="log-icon ${h.type}">${icons[h.type]||'ℹ️'}</div><div class="log-body"><div class="log-text">${h.text}</div><div class="log-time">${h.created_at?.slice(0,16).replace('T',' ')} · ${h.user_name}</div></div></div>`).join('')||'<div style="text-align:center;padding:32px;color:var(--text3);">Aucun historique</div>';
 }
 
