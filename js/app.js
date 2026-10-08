@@ -206,6 +206,17 @@ function toast(msg, d=3500) {
 }
 
 // ===== NOTIFICATIONS EMAIL =====
+function gmailComposeUrl({ to, bcc, subject, body }) {
+  const composeUrl = new URL('https://mail.google.com/mail/');
+  composeUrl.searchParams.set('view', 'cm');
+  composeUrl.searchParams.set('fs', '1');
+  if (to) composeUrl.searchParams.set('to', to);
+  if (bcc) composeUrl.searchParams.set('bcc', bcc);
+  composeUrl.searchParams.set('su', subject);
+  composeUrl.searchParams.set('body', body);
+  return composeUrl.href.length <= 8000 ? composeUrl.href : null;
+}
+
 function reservationEmailDrafts(requestId, status, note='', reservationId=null) {
   const reservations = state.data.reservations
     .filter(reservation => reservationRequestId(reservation) === requestId)
@@ -263,16 +274,10 @@ function reservationEmailDrafts(requestId, status, note='', reservationId=null) 
       : status === 'approved'
         ? `[FédéraMat] Matériel à prêter — ${requester?.name || 'Demande approuvée'}`
         : '[FédéraMat] Demande de réservation refusée';
-    const composeUrl = new URL('https://mail.google.com/mail/');
-    composeUrl.searchParams.set('view', 'cm');
-    composeUrl.searchParams.set('fs', '1');
-    composeUrl.searchParams.set('to', delivery.to);
-    composeUrl.searchParams.set('su', subject);
-    composeUrl.searchParams.set('body', text);
     return {
       to: delivery.to,
       associationName: delivery.association.name || delivery.to,
-      href: composeUrl.href.length <= 8000 ? composeUrl.href : null,
+      href: gmailComposeUrl({ to: delivery.to, subject, body: text }),
     };
   });
   return { drafts, reason };
@@ -328,17 +333,16 @@ function submitBroadcastEmail() {
   }
   if (!window.confirm(`Ouvrir un brouillon Gmail avec ${recipientCount} destinataire${recipientCount > 1 ? 's' : ''} en copie cachée ?`)) return;
 
-  const composeUrl = new URL('https://mail.google.com/mail/');
-  composeUrl.searchParams.set('view', 'cm');
-  composeUrl.searchParams.set('fs', '1');
-  composeUrl.searchParams.set('bcc', recipients.join(','));
-  composeUrl.searchParams.set('su', `[FédéraMat] ${subject}`);
-  composeUrl.searchParams.set('body', message);
-  if (composeUrl.href.length > 8000) {
+  const composeUrl = gmailComposeUrl({
+    bcc: recipients.join(','),
+    subject: `[FédéraMat] ${subject}`,
+    body: message,
+  });
+  if (!composeUrl) {
     toast('Le brouillon est trop long pour être ouvert dans Gmail. Réduisez le texte ou le nombre de destinataires.');
     return;
   }
-  const composeWindow = window.open(composeUrl.href, '_blank');
+  const composeWindow = window.open(composeUrl, '_blank');
   if (!composeWindow) {
     toast('La fenêtre Gmail a été bloquée. Autorisez les fenêtres pop-up pour ce site puis réessayez.');
     return;
