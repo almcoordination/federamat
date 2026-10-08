@@ -29,7 +29,7 @@ Uploadez tous les fichiers sur votre hébergeur (OVH, Infomaniak, etc.) ou dépl
 
 ### Emails et GitHub Pages
 
-Les emails ne sont pas envoyés automatiquement. Après le passage d’une réservation en examen ou après une décision, l’application propose des brouillons Gmail adaptés aux associations prêteuses ou à l’association demandeuse. La rubrique **Message collectif** prépare aussi un brouillon adressé en copie cachée aux associations actives. Ouvrez chaque brouillon, vérifiez-le puis cliquez sur « Envoyer » dans Gmail. Ces fonctions sont compatibles avec GitHub Pages et ne nécessitent pas de backend.
+Les emails ne sont pas envoyés automatiquement. Après le passage d’une réservation en examen ou après une décision, l’application propose des brouillons Gmail adaptés aux associations concernées. Lors d’une approbation, le brouillon du demandeur est proposé en premier, puis celui du propriétaire du matériel ; en cas de refus, le demandeur reçoit le brouillon. La rubrique **Message collectif** prépare aussi un brouillon adressé en copie cachée aux associations actives. Ouvrez chaque brouillon, vérifiez-le puis cliquez sur « Envoyer » dans Gmail. Ces fonctions sont compatibles avec GitHub Pages et ne nécessitent pas de backend.
 
 Si l'application affiche une erreur de connexion, ouvrez la console du navigateur (`F12`) : le message Supabase indique maintenant la table ou la permission en cause. Vérifiez aussi que l'URL du projet et la clé publique dans `js/app.js` correspondent au même projet.
 

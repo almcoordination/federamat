@@ -228,33 +228,63 @@ function reservationEmailDrafts(requestId, status, note='', reservationId=null) 
   const first = reservations[0];
   const requester = getAsso(first.asso_id);
   const deliveries = [];
+  const missingRecipients = [];
+  if (status === 'approved' && typeof requester?.email === 'string' && requester.email.trim()) {
+    deliveries.push({
+      to: requester.email.trim(),
+      association: requester,
+      reservations,
+      recipientRole: 'Association demandeuse',
+    });
+  } else if (status === 'approved' && requester) {
+    missingRecipients.push(`adresse email manquante pour l’association demandeuse (${requester.name})`);
+  }
   if (status === 'rejected') {
     if (typeof requester?.email === 'string' && requester.email.trim()) {
-      deliveries.push({ to: requester.email.trim(), association: requester, reservations });
+      deliveries.push({
+        to: requester.email.trim(),
+        association: requester,
+        reservations,
+        recipientRole: 'Association demandeuse',
+      });
+    } else {
+      missingRecipients.push('adresse email manquante pour l’association demandeuse');
     }
   } else {
     const ownerGroups = new Map();
     reservations.forEach(reservation => {
       const ownerId = getEquip(reservation.equip_id)?.owner_asso_id;
       const owner = ownerId ? getAsso(ownerId) : null;
-      if (typeof owner?.email !== 'string' || !owner.email.trim()) return;
+      if (!owner) return;
+      if (typeof owner.email !== 'string' || !owner.email.trim()) {
+        missingRecipients.push(`adresse email manquante pour le propriétaire (${owner.name})`);
+        return;
+      }
       if (!ownerGroups.has(ownerId)) ownerGroups.set(ownerId, { to: owner.email.trim(), association: owner, reservations: [] });
       ownerGroups.get(ownerId).reservations.push(reservation);
     });
-    deliveries.push(...ownerGroups.values());
+    deliveries.push(...[...ownerGroups.values()].map(delivery => ({
+      ...delivery,
+      recipientRole: 'Association propriétaire',
+    })));
+    if (!ownerGroups.size && reservations.some(reservation => !getEquip(reservation.equip_id)?.owner_asso_id)) {
+      missingRecipients.push('aucune association propriétaire renseignée pour ce matériel');
+    }
   }
 
-  const reason = status === 'rejected' ? 'requester-email-missing' : 'no-lending-association-email';
   const drafts = deliveries.map(delivery => {
     const equipmentLines = delivery.reservations.map(reservation =>
       `- ${getEquip(reservation.equip_id)?.name || 'Matériel'} × ${reservation.qty}`);
+    const isRequester = delivery.recipientRole === 'Association demandeuse';
     const text = [
       `Bonjour ${delivery.association.referent || delivery.association.name || 'Madame, Monsieur'},`,
       '',
       status === 'under_review'
         ? 'Une demande de réservation portant sur du matériel dont votre association est propriétaire est en cours d’examen par l’administrateur. Voici son récapitulatif.'
         : status === 'approved'
-          ? 'La demande de matériel ci-dessous a été approuvée. Voici le récapitulatif du matériel dont votre association est propriétaire.'
+          ? isRequester
+            ? 'Votre demande de réservation est approuvée. Voici le récapitulatif du matériel validé.'
+            : 'La demande de matériel ci-dessous a été approuvée. Voici le récapitulatif du matériel dont votre association est propriétaire.'
           : 'La demande de réservation ci-dessous a été refusée par l’administrateur.',
       '',
       `Association demandeuse : ${requester?.name || 'Non renseignée'}`,
@@ -272,33 +302,37 @@ function reservationEmailDrafts(requestId, status, note='', reservationId=null) 
     const subject = status === 'under_review'
       ? `[FédéraMat] Demande à examiner — ${requester?.name || 'Association'}`
       : status === 'approved'
-        ? `[FédéraMat] Matériel à prêter — ${requester?.name || 'Demande approuvée'}`
+        ? isRequester
+          ? '[FédéraMat] Votre demande de réservation est approuvée'
+          : `[FédéraMat] Matériel à prêter — ${requester?.name || 'Demande approuvée'}`
         : '[FédéraMat] Demande de réservation refusée';
     return {
       to: delivery.to,
       associationName: delivery.association.name || delivery.to,
+      recipientRole: delivery.recipientRole,
       href: gmailComposeUrl({ to: delivery.to, subject, body: text }),
     };
   });
-  return { drafts, reason };
+  return { drafts, missingRecipients };
 }
 function showReservationEmailDrafts(result, statusMessage) {
   const list = document.getElementById('reservation-email-drafts');
   if (!result.drafts.length) {
-    toast(`${statusMessage} — ${result.reason === 'requester-email-missing'
-      ? 'aucune adresse email renseignée pour l’association demandeuse.'
-      : 'aucune adresse email renseignée pour les associations prêteuses.'}`, 7000);
+    toast(`${statusMessage} — ${result.missingRecipients.join('; ') || 'aucun destinataire email.'}`, 7000);
     return;
   }
-  list.innerHTML = result.drafts.map(draft => draft.href
+  const warnings = result.missingRecipients.length
+    ? `<div class="alert alert-warn">Notification non préparée : ${result.missingRecipients.map(escapeHtml).join(' ; ')}.</div>`
+    : '';
+  list.innerHTML = warnings + result.drafts.map((draft, index) => draft.href
     ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid var(--border);">
-        <span style="font-size:13px;">${escapeHtml(draft.associationName)} <span style="color:var(--text3);">(${escapeHtml(draft.to)})</span></span>
-        <a class="btn btn-primary btn-sm" href="${escapeHtml(draft.href)}" target="_blank" rel="noopener">Ouvrir dans Gmail</a>
+        <span style="font-size:13px;"><strong>${index + 1}. ${escapeHtml(draft.recipientRole)}</strong><br>${escapeHtml(draft.associationName)} <span style="color:var(--text3);">(${escapeHtml(draft.to)})</span></span>
+        <a class="btn btn-primary btn-sm" href="${escapeHtml(draft.href)}" target="_blank" rel="noopener">Ouvrir le brouillon ${index + 1} dans Gmail</a>
       </div>`
     : `<div class="alert alert-warn">Le brouillon pour ${escapeHtml(draft.associationName)} est trop long pour être ouvert dans Gmail.</div>`
   ).join('');
   openModal('modal-reservation-email');
-  toast(`${statusMessage} — ${result.drafts.length} brouillon${result.drafts.length > 1 ? 's' : ''} Gmail à préparer.`, 7000);
+  toast(`${statusMessage} — ${result.drafts.length} brouillon${result.drafts.length > 1 ? 's' : ''} Gmail à ouvrir successivement.`, 7000);
 }
 
 function broadcastRecipients() {
