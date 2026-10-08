@@ -789,6 +789,9 @@ async function submitChangePassword(){
 }
 
 // ===== COMPTES (ADMIN) =====
+function escapeHtml(value){
+  return String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+}
 function renderComptes(){
   document.getElementById('comptes-tbody').innerHTML=state.data.users.map(u=>{
     const a=u.asso?getAsso(u.asso):null;
@@ -797,8 +800,9 @@ function renderComptes(){
       <td><code style="background:var(--surface2);padding:2px 7px;border-radius:4px;font-size:12px;">${u.login}</code></td>
       <td><span class="user-role-badge ${u.role==='admin'?'role-admin':'role-asso'}">${u.role==='admin'?'Administrateur':'Association'}</span></td>
       <td>${associationIdentity(a)}</td>
+      <td>${u.role==='asso'?`<code>${escapeHtml(u.password)}</code>`:'—'}</td>
       <td style="display:flex;gap:6px;flex-wrap:wrap;">
-        <button class="btn btn-sm" onclick="openAdminChangePw('${u.id}')">🔑 Mot de passe</button>
+        <button class="btn btn-sm" onclick="openAdminChangePw('${u.id}')">🔑 Changement mdp</button>
         ${u.id!==state.currentUser.id?`<button class="btn btn-sm btn-danger" onclick="deleteUser('${u.id}')">🗑️ Supprimer</button>`:''}
       </td>
     </tr>`;
