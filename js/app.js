@@ -38,6 +38,9 @@ function associationIdentity(association, size=32) {
   if(!association) return '—';
   return `<span class="association-identity">${associationMark(association,size)}<span>${association.name}</span></span>`;
 }
+function federationIdentity(label='Fédération', size=20) {
+  return `<span class="association-identity"><img class="asso-brand-mark" style="width:${size}px;height:${size}px;" src="ChatGPT Image 3 août 2026, 17_01_25.png" alt="A.L.M."><span>${label}</span></span>`;
+}
 function isMissingAssociationLogoColumn(error) {
   return ['42703','PGRST204'].includes(error?.code)&&/logo/i.test(error.message||'');
 }
@@ -361,7 +364,7 @@ function renderStock() {
     const avail=computeAvailableForPeriod(eq.id,state.stockDate,state.stockDate), pct=Math.round(avail/eq.total*100);
     const pcls=pct<20?'danger':pct<40?'warn':'', scls=avail===0?'unavailable':pct<30?'low':'available', stxt=avail===0?'Indisponible':pct<30?'Stock bas':'Disponible';
     const owner=eq.owner_asso_id?getAsso(eq.owner_asso_id):null;
-    return `<tr><td><strong>${eq.name}</strong><div style="font-size:11px;color:var(--text3);">${eq.location||''}</div>${owner?`<div style="font-size:11px;color:var(--purple);">${associationIdentity(owner,20)}</div>`:'<div style="font-size:11px;color:var(--text3);">Fédération</div>'}</td><td><span class="cat-tag ${catCls[eq.cat]||''}">${catMap[eq.cat]||eq.cat}</span></td><td>${eq.total}</td><td><div class="progress-wrap"><span style="font-size:13px;font-weight:500;">${avail}</span><div class="progress-bar"><div class="progress-fill ${pcls}" style="width:${pct}%"></div></div><span class="progress-num">${pct}%</span></div></td><td><span class="badge badge-${scls}">${stxt}</span></td><td style="font-size:12px;color:var(--text3);">${eq.state}</td><td>${isAdmin()?`<button class="btn btn-sm" onclick="openEditEquip('${eq.id}')">Modifier</button>`:`<button class="btn btn-sm" onclick="openNewReservation(null,'${eq.id}')">Réserver</button>`}</td></tr>`;
+    return `<tr><td><strong>${eq.name}</strong><div style="font-size:11px;color:var(--text3);">${eq.location||''}</div>${owner?`<div style="font-size:11px;color:var(--purple);">${associationIdentity(owner,20)}</div>`:`<div style="font-size:11px;color:var(--text3);">${federationIdentity()}</div>`}</td><td><span class="cat-tag ${catCls[eq.cat]||''}">${catMap[eq.cat]||eq.cat}</span></td><td>${eq.total}</td><td><div class="progress-wrap"><span style="font-size:13px;font-weight:500;">${avail}</span><div class="progress-bar"><div class="progress-fill ${pcls}" style="width:${pct}%"></div></div><span class="progress-num">${pct}%</span></div></td><td><span class="badge badge-${scls}">${stxt}</span></td><td style="font-size:12px;color:var(--text3);">${eq.state}</td><td>${isAdmin()?`<button class="btn btn-sm" onclick="openEditEquip('${eq.id}')">Modifier</button>`:`<button class="btn btn-sm" onclick="openNewReservation(null,'${eq.id}')">Réserver</button>`}</td></tr>`;
   }).join('')||'<tr><td colspan="7" style="padding:24px;text-align:center;color:var(--text3);">Aucun équipement</td></tr>';
 }
 function setStockFilter(f){state.stockFilter=f;document.querySelectorAll('#stock-filters .filter-btn').forEach(b=>b.classList.toggle('active',b.dataset.filter===f));renderStock();}
@@ -437,7 +440,7 @@ function renderApprovals(){
       const actions=r.status==='under_review'
         ?`<button class="btn btn-primary btn-sm" onclick="decideReservationLine('${r.id}','approved')">Valider cette ligne</button> <button class="btn btn-danger btn-sm" onclick="decideReservationLine('${r.id}','rejected')">Refuser</button>`
         :r.status==='pending'?'En attente du début de l’examen':'—';
-      return `<tr><td><strong>${eq?.name||'?'}</strong><div class="approval-meta">${owner?associationIdentity(owner,20):'Matériel fédéral'}</div></td><td>${r.qty}</td><td><span class="badge badge-${r.status}">${statusLabel(r.status)}</span></td><td>${actions}</td></tr>`;
+      return `<tr><td><strong>${eq?.name||'?'}</strong><div class="approval-meta">${owner?associationIdentity(owner,20):federationIdentity('Matériel fédéral',20)}</div></td><td>${r.qty}</td><td><span class="badge badge-${r.status}">${statusLabel(r.status)}</span></td><td>${actions}</td></tr>`;
     }).join('');
     return `<div class="approval-card" id="acard-${request.id}">
       <div class="approval-header">
@@ -590,7 +593,7 @@ function renderAvailableEquipment(preselectedId=null){
     const pct=eq.total?Math.round(qty/eq.total*100):0;
     const progressClass=pct<20?'danger':pct<40?'warn':'';
     return `<tr class="reservation-equipment-item">
-      <td><strong>${eq.name}</strong><div class="reservation-equipment-meta">${owner?associationIdentity(owner,20):'Matériel fédéral'}</div></td>
+      <td><strong>${eq.name}</strong><div class="reservation-equipment-meta">${owner?associationIdentity(owner,20):federationIdentity('Matériel fédéral',20)}</div></td>
       <td>${categories[eq.cat]||eq.cat}</td><td>${eq.total}</td>
       <td><div class="progress-wrap"><span>${qty}</span><div class="progress-bar"><div class="progress-fill ${progressClass}" style="width:${pct}%"></div></div><span class="progress-num">${pct}%</span></div></td>
       <td>${eq.state||'—'}</td>

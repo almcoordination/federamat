@@ -106,7 +106,7 @@ input, select, textarea { font-family: inherit; font-size: 13px; }
   flex: 1 1 auto; min-width: 16px;
 }
 .topbar-title { display: flex; align-items: center; flex: 0 0 auto; padding-right: 14px; font-size: 16px; font-weight: 600; color: var(--text); white-space: nowrap; }
-.topbar-user-asso { display: flex; align-items: center; gap: 8px; flex-shrink: 0; font-size: 13px; font-weight: 600; color: var(--text); }
+.topbar-user-asso { display: flex; align-items: center; gap: 8px; flex-shrink: 0; margin-left: 16px; font-size: 13px; font-weight: 600; color: var(--text); }
 .association-identity { display: inline-flex; align-items: center; gap: 8px; vertical-align: middle; }
 .topbar-actions { display: flex; flex-shrink: 0; gap: 8px; margin-left: 14px; }
 
