@@ -152,20 +152,8 @@ function associationBannerColor(association) {
   return associationBannerColors.includes(association?.color) ? association.color : '#ffffff';
 }
 function updateTopbarBanner() {
-  const topbar=document.querySelector('.topbar');
   const band=document.getElementById('topbar-color-band');
-  const title=document.getElementById('topbar-title');
-  if(!topbar||!band||!title) return;
-  const topbarRect=topbar.getBoundingClientRect();
-  const titleRect=title.getBoundingClientRect();
-  const logo=document.querySelector('#topbar-user-asso .asso-brand-mark, #topbar-user-asso .asso-brand-placeholder');
-  const associationIdentity=document.getElementById('topbar-user-asso');
-  const endElement=logo||((associationIdentity?.style.display!=='none'&&associationIdentity?.innerHTML)?associationIdentity:document.querySelector('.topbar-actions'));
-  const endRect=endElement?.getBoundingClientRect();
-  const left=Math.max(0,titleRect.left-topbarRect.left-10);
-  const right=endRect?Math.max(14,topbarRect.right-endRect.left+8):14;
-  band.style.left=`${left}px`;
-  band.style.right=`${right}px`;
+  if(!band) return;
   band.style.background=isAdmin()
     ?'linear-gradient(90deg, #0057bf 0 33.333%, #659f04 33.333% 66.666%, #f66a03 66.666% 100%)'
     :associationBannerColor(currentAsso());
@@ -930,7 +918,6 @@ async function loginSubmit(){
 
 // ===== INIT =====
 document.addEventListener('DOMContentLoaded', async () => {
-  window.addEventListener('resize',updateTopbarBanner);
   document.getElementById('login-pass').addEventListener('keydown',e=>{if(e.key==='Enter')loginSubmit();});
   document.getElementById('login-user').addEventListener('keydown',e=>{if(e.key==='Enter')loginSubmit();});
   const loaded = await loadData();
