@@ -803,7 +803,6 @@ function renderComptes(){
       <td><code>${escapeHtml(u.password)}</code></td>
       <td style="display:flex;gap:6px;flex-wrap:wrap;">
         <button class="btn btn-sm" onclick="openAdminChangePw('${u.id}')">🔑 Changement mdp</button>
-        ${u.id!==state.currentUser.id?`<button class="btn btn-sm btn-danger" onclick="deleteUser('${u.id}')">🗑️ Supprimer</button>`:''}
       </td>
     </tr>`;
   }).join('');
