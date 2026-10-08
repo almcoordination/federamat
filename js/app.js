@@ -250,6 +250,7 @@ function groupReservationRequests(reservations){
 async function markReservationUnderReview(requestId){
   const reservations=state.data.reservations.filter(r=>reservationRequestId(r)===requestId&&r.status==='pending');
   if(!isAdmin()||!reservations.length) return;
+  const note=document.getElementById('note-'+requestId)?.value||'';
   const ids=reservations.map(r=>r.id);
   const {error}=await db.from('reservations').update({status:'under_review'}).in('id',ids);
   if(error){toast('Erreur : '+error.message,5000);console.error(error);return;}
@@ -257,7 +258,13 @@ async function markReservationUnderReview(requestId){
   const requester=getAsso(reservations[0].asso_id)?.name||'Association';
   await addHistory('under_review',`Demande de ${reservations.length} matériel(aux) (${requester}) mise en cours d’examen`);
   renderSidebar(); renderPage(state.currentPage);
-  toast('Demande mise en cours d’examen');
+  const notified=await notifyReservation(requestId,'under_review',note);
+  const outcome=notified.sent
+    ?`${notified.recipientCount||1} email(s) envoyé(s)`
+    :notified.reason==='no-lending-association-email'
+      ?'aucune association propriétaire à prévenir'
+      :`email non envoyé : ${notified.error||notified.reason||'aucun destinataire'}`;
+  toast(`Demande mise en cours d’examen — ${outcome}`,7000);
 }
 async function decideReservationRequest(requestId,status){
   if(!isAdmin()||!['approved','rejected'].includes(status)) return;

@@ -47,7 +47,7 @@ exports.handler = async event => {
     return response(400, { error: 'Requête invalide' });
   }
   if (typeof requestId !== 'string' || !requestId) return response(400, { error: 'Demande manquante' });
-  if (!['pending', 'approved', 'rejected'].includes(requestedStatus)) return response(400, { error: 'Statut invalide' });
+  if (!['pending', 'under_review', 'approved', 'rejected'].includes(requestedStatus)) return response(400, { error: 'Statut invalide' });
 
   try {
     let reservations = await fetchRows('reservations', { request_id: `eq.${requestId}` });
@@ -85,7 +85,7 @@ exports.handler = async event => {
         reservations: items,
       })).filter(delivery => delivery.to);
     if (!deliveries.length) {
-      return response(200, { sent: false, reason: requestedStatus === 'approved' ? 'no-lending-association-email' : 'requester-email-missing' });
+      return response(200, { sent: false, reason: requestedStatus === 'rejected' ? 'requester-email-missing' : 'no-lending-association-email' });
     }
 
     const appName = 'FédéraMat';
@@ -103,9 +103,11 @@ exports.handler = async event => {
       const text = [
         'Bonjour,',
         '',
-        requestedStatus === 'approved'
-          ? 'La demande de matériel ci-dessous a été approuvée. Voici le récapitulatif du matériel dont votre association est propriétaire.'
-          : 'La demande de réservation ci-dessous a été refusée par l’administrateur.',
+        requestedStatus === 'under_review'
+          ? 'Une demande de réservation portant sur du matériel dont votre association est propriétaire est en cours d’examen par l’administrateur. Voici son récapitulatif.'
+          : requestedStatus === 'approved'
+            ? 'La demande de matériel ci-dessous a été approuvée. Voici le récapitulatif du matériel dont votre association est propriétaire.'
+            : 'La demande de réservation ci-dessous a été refusée par l’administrateur.',
         '',
         `Association demandeuse : ${requester?.name || 'Non renseignée'}`,
         `Du : ${formatDate(first.date_start)} au ${formatDate(first.date_end)}`,
@@ -117,9 +119,11 @@ exports.handler = async event => {
         note ? `${requestedStatus === 'rejected' ? 'Motif du refus' : 'Message'} : ${note}` : '',
         '',
       ].filter(Boolean).join('\n');
-      const subject = requestedStatus === 'approved'
-        ? `[${appName}] Matériel à prêter — ${requester?.name || 'Demande approuvée'}`
-        : `[${appName}] Demande de réservation refusée`;
+      const subject = requestedStatus === 'under_review'
+        ? `[${appName}] Demande à examiner — ${requester?.name || 'Association'}`
+        : requestedStatus === 'approved'
+          ? `[${appName}] Matériel à prêter — ${requester?.name || 'Demande approuvée'}`
+          : `[${appName}] Demande de réservation refusée`;
       await transporter.sendMail({
         from: { name: appName, address: GMAIL_USER },
         to: delivery.to,
