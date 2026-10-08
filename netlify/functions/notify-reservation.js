@@ -40,18 +40,20 @@ exports.handler = async event => {
     return response(500, { error: `Variables Netlify manquantes : ${missing.join(', ')}` });
   }
 
-  let requestId, requestedStatus, note;
+  let requestId, reservationId, requestedStatus, note;
   try {
-    ({ requestId, status: requestedStatus, note } = JSON.parse(event.body || '{}'));
+    ({ requestId, reservationId, status: requestedStatus, note } = JSON.parse(event.body || '{}'));
   } catch {
     return response(400, { error: 'Requête invalide' });
   }
   if (typeof requestId !== 'string' || !requestId) return response(400, { error: 'Demande manquante' });
+  if (reservationId != null && (typeof reservationId !== 'string' || !reservationId)) return response(400, { error: 'Ligne de réservation invalide' });
   if (!['pending', 'under_review', 'approved', 'rejected'].includes(requestedStatus)) return response(400, { error: 'Statut invalide' });
 
   try {
     let reservations = await fetchRows('reservations', { request_id: `eq.${requestId}` });
     if (!reservations.length) reservations = await fetchRows('reservations', { id: `eq.${requestId}` });
+    if (reservationId) reservations = reservations.filter(reservation => reservation.id === reservationId);
     if (!reservations.length) return response(404, { error: 'Demande introuvable' });
     if (reservations.some(reservation => reservation.status !== requestedStatus)) return response(409, { error: 'Le statut de la demande a changé' });
     if (requestedStatus === 'pending') return response(200, { sent: false, reason: 'awaiting-admin-approval' });

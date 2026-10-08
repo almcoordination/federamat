@@ -153,12 +153,12 @@ function toast(msg, d=3500) {
 }
 
 // ===== NOTIFICATIONS EMAIL =====
-async function notifyReservation(requestId, status, note='') {
+async function notifyReservation(requestId, status, note='', reservationId=null) {
   try {
     const response = await fetch('/.netlify/functions/notify-reservation', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ requestId, status, note }),
+      body: JSON.stringify({ requestId, reservationId, status, note }),
     });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || `Erreur de la fonction email (${response.status})`);
@@ -266,27 +266,6 @@ async function markReservationUnderReview(requestId){
       :`email non envoyé : ${notified.error||notified.reason||'aucun destinataire'}`;
   toast(`Demande mise en cours d’examen — ${outcome}`,7000);
 }
-async function decideReservationRequest(requestId,status){
-  if(!isAdmin()||!['approved','rejected'].includes(status)) return;
-  const reservations=state.data.reservations.filter(r=>reservationRequestId(r)===requestId&&['pending','under_review'].includes(r.status));
-  if(!reservations.length) return;
-  if(status==='approved'&&reservations.some(r=>r.status!=='under_review')){
-    toast('La demande doit être mise en cours d’examen avant validation.');
-    return;
-  }
-  const note=document.getElementById('note-'+requestId)?.value||'';
-  const ids=reservations.map(r=>r.id);
-  const {error}=await db.from('reservations').update({status,notes:note}).in('id',ids);
-  if(error){toast('Erreur : '+error.message,5000);console.error(error);return;}
-  reservations.forEach(r=>{r.status=status;r.notes=note;});
-  const requester=getAsso(reservations[0].asso_id)?.name||'Association';
-  await addHistory(''+status,`Demande de ${reservations.length} matériel(aux) (${requester}) ${status==='approved'?'validée':'refusée'}`);
-  renderSidebar(); renderPage(state.currentPage);
-  const notified=await notifyReservation(requestId,status,note);
-  const outcome=notified.sent?`${notified.recipientCount||1} email(s) envoyé(s)`:notified.reason==='no-lending-association-email'?'aucune association prêteuse à prévenir':`email non envoyé : ${notified.error||notified.reason||'aucun destinataire'}`;
-  toast(`${status==='approved'?'✓ Demande validée':'Demande refusée'} — ${outcome}`,7000);
-}
-
 // ===== CALENDAR =====
 function renderCalendar() {
   const yr=state.calMonth.getFullYear(), mo=state.calMonth.getMonth();
@@ -338,7 +317,7 @@ function renderReservations() {
   data=[...data].reverse();
   document.getElementById('reservations-tbody').innerHTML=data.map(r=>{
     const eq=getEquip(r.equip_id),as=getAsso(r.asso_id);
-    const actions=!isAdmin()&&['pending','under_review'].includes(r.status)?`<button class="btn btn-sm btn-danger" onclick="cancelReserv('${r.id}')">Annuler</button>`:!isAdmin()&&['approved','rejected'].includes(r.status)?`<button class="btn btn-sm btn-danger" onclick="deleteReserv('${r.id}')">Supprimer</button>`:isAdmin()&&r.status==='pending'?`<button class="btn btn-sm btn-primary" onclick="markReservationUnderReview('${reservationRequestId(r)}')">Examiner</button>`:isAdmin()&&r.status==='under_review'?`<button class="btn btn-sm btn-primary" onclick="approveReserv('${reservationRequestId(r)}')">Valider</button>`:'';
+    const actions=!isAdmin()&&['pending','under_review'].includes(r.status)?`<button class="btn btn-sm btn-danger" onclick="cancelReserv('${r.id}')">Annuler</button>`:!isAdmin()&&['approved','rejected'].includes(r.status)?`<button class="btn btn-sm btn-danger" onclick="deleteReserv('${r.id}')">Supprimer</button>`:isAdmin()&&r.status==='pending'?`<button class="btn btn-sm btn-primary" onclick="markReservationUnderReview('${reservationRequestId(r)}')">Examiner</button>`:'';
     return `<tr><td><strong>${eq?.name||'?'}</strong></td>${isAdmin()?`<td>${as?.name||'?'}</td>`:''}<td>${fmtDate(r.date_start)}</td><td>${fmtDate(r.date_end)}</td><td>${r.qty}</td><td><span class="badge badge-${r.status}">${statusLabel(r.status)}</span></td><td><button class="btn btn-sm" onclick="showReservDetail('${r.id}')">Voir</button>${actions}</td></tr>`;
   }).join('')||`<tr><td colspan="7"><div style="text-align:center;padding:32px;color:var(--text3);">📋 Aucune réservation</div></td></tr>`;
   const th=document.getElementById('th-asso'); if(th) th.style.display=isAdmin()?'':'none';
@@ -379,13 +358,19 @@ function showReservDetail(id){
 
 // ===== APPROVALS =====
 function renderApprovals(){
-  const pending=groupReservationRequests(state.data.reservations.filter(r=>['pending','under_review'].includes(r.status)));
+  const pending=groupReservationRequests(state.data.reservations)
+    .filter(request=>request.reservations.some(r=>['pending','under_review'].includes(r.status)));
   document.getElementById('approvals-list').innerHTML=pending.map(request=>{
-    const reservations=request.reservations,first=reservations[0],asso=getAsso(first.asso_id);
-    const conflicts=reservations.filter(r=>computeAvailableForPeriod(r.equip_id,r.date_start,r.date_end,r.id)<r.qty);
-    const equipmentList=reservations.map(r=>{
+    const reservations=request.reservations,first=reservations[0];
+    const active=reservations.find(r=>['pending','under_review'].includes(r.status))||first;
+    const asso=getAsso(first.asso_id);
+    const conflicts=reservations.filter(r=>r.status==='under_review'&&computeAvailableForPeriod(r.equip_id,r.date_start,r.date_end,r.id)<r.qty);
+    const equipmentRows=reservations.map(r=>{
       const eq=getEquip(r.equip_id),owner=eq?.owner_asso_id?getAsso(eq.owner_asso_id):null;
-      return `<li>${eq?.name||'?'} × ${r.qty} <span style="color:var(--text3);">(${owner?.name||'Matériel fédéral'})</span></li>`;
+      const actions=r.status==='under_review'
+        ?`<button class="btn btn-primary btn-sm" onclick="decideReservationLine('${r.id}','approved')">Valider cette ligne</button> <button class="btn btn-danger btn-sm" onclick="decideReservationLine('${r.id}','rejected')">Refuser</button>`
+        :r.status==='pending'?'En attente du début de l’examen':'—';
+      return `<tr><td><strong>${eq?.name||'?'}</strong><div class="approval-meta">${owner?.name||'Matériel fédéral'}</div></td><td>${r.qty}</td><td><span class="badge badge-${r.status}">${statusLabel(r.status)}</span></td><td>${actions}</td></tr>`;
     }).join('');
     return `<div class="approval-card" id="acard-${request.id}">
       <div class="approval-header">
@@ -394,24 +379,43 @@ function renderApprovals(){
           <div class="approval-meta">Du ${fmtDate(first.date_start)} au ${fmtDate(first.date_end)} · ${reservations.length} matériel(aux)</div>
           <div class="approval-meta">Lieu : ${first.location||'—'}</div>
         </div>
-        <span class="badge badge-${first.status}">${statusLabel(first.status)}</span>
+        <span class="badge badge-${active.status}">${statusLabel(active.status)}</span>
       </div>
       ${conflicts.map(r=>`<div class="alert alert-danger" style="margin:8px 0;">⚠️ ${getEquip(r.equip_id)?.name||'Matériel'} : disponibilité modifiée, ${computeAvailableForPeriod(r.equip_id,r.date_start,r.date_end,r.id)} unité(s) disponible(s), ${r.qty} demandée(s).</div>`).join('')}
-      <ul class="approval-reason">${equipmentList}</ul>
+      <div class="table-wrap"><table><thead><tr><th>Matériel</th><th>Qté</th><th>Statut</th><th>Décision par ligne</th></tr></thead><tbody>${equipmentRows}</tbody></table></div>
       <div class="approval-reason">Motif : ${first.reason||'—'}</div>
       <div style="margin-bottom:10px;">
         <label class="form-label">Message à joindre à l'email (optionnel)</label>
         <input type="text" class="form-control" id="note-${request.id}" placeholder="Précision pour le demandeur ou les prêteurs">
       </div>
       <div class="approval-actions">
-        ${first.status==='pending'?`<button class="btn btn-primary btn-sm" onclick="markReservationUnderReview('${request.id}')">Examiner la demande</button>`:`<button class="btn btn-primary btn-sm" onclick="approveReserv('${request.id}')">✓ Valider la demande</button>`}
-        <button class="btn btn-danger btn-sm" onclick="rejectReserv('${request.id}')">✗ Refuser la demande</button>
+        ${reservations.some(r=>r.status==='pending')?`<button class="btn btn-primary btn-sm" onclick="markReservationUnderReview('${request.id}')">Examiner la demande</button>`:''}
       </div>
     </div>`;
   }).join('')||`<div style="text-align:center;padding:48px;color:var(--text3);"><div style="font-size:36px;margin-bottom:12px;">✅</div><div>Aucune validation en attente</div></div>`;
 }
-async function approveReserv(requestId){await decideReservationRequest(requestId,'approved');}
-async function rejectReserv(requestId){await decideReservationRequest(requestId,'rejected');}
+async function decideReservationLine(reservationId,status){
+  if(!isAdmin()||!['approved','rejected'].includes(status)) return;
+  const reservation=state.data.reservations.find(r=>r.id===reservationId&&r.status==='under_review');
+  if(!reservation) return;
+  const requestId=reservationRequestId(reservation);
+  const note=document.getElementById('note-'+requestId)?.value||'';
+  const ok=await dbUpdate('reservations',reservationId,{status,notes:note});
+  if(!ok) return;
+  reservation.status=status;
+  reservation.notes=note;
+  const equipment=getEquip(reservation.equip_id);
+  const requester=getAsso(reservation.asso_id)?.name||'Association';
+  await addHistory(status,`Ligne ${equipment?.name||'Matériel'} × ${reservation.qty} de la demande de ${requester} ${status==='approved'?'validée':'refusée'}`);
+  renderSidebar(); renderApprovals();
+  const notified=await notifyReservation(requestId,status,note,reservationId);
+  const outcome=notified.sent
+    ?`${notified.recipientCount||1} email(s) envoyé(s)`
+    :notified.reason==='no-lending-association-email'
+      ?'aucune association propriétaire à prévenir'
+      :`email non envoyé : ${notified.error||notified.reason||'aucun destinataire'}`;
+  toast(`Ligne ${equipment?.name||'Matériel'} ${status==='approved'?'validée':'refusée'} — ${outcome}`,7000);
+}
 
 // ===== ASSOCIATIONS =====
 function renderAssociations(){
