@@ -333,17 +333,26 @@ async function cancelReserv(id){
   renderSidebar(); renderReservations(); toast('Ligne de réservation annulée');
 }
 async function deleteReserv(id){
-  if(!isAdmin()) return;
+  const admin=isAdmin();
   const r=state.data.reservations.find(r=>r.id===id); if(!r) return;
   const requestId=reservationRequestId(r);
-  const items=state.data.reservations.filter(item=>reservationRequestId(item)===requestId);
+  if(!admin&&!['approved','rejected'].includes(r.status)) return;
+  const items=admin?[r]:state.data.reservations.filter(item=>reservationRequestId(item)===requestId);
+  const equipment=getEquip(r.equip_id)?.name||'Matériel';
   const summary=items.map(item=>`${getEquip(item.equip_id)?.name||'Matériel'} × ${item.qty}`).join(', ');
-  if(!confirm(`Supprimer définitivement cette demande (${items.length} ligne(s)) ? Matériel concerné : ${summary}.`)) return;
+  const confirmation=admin
+    ?`Supprimer uniquement la ligne « ${equipment} × ${r.qty} » de cette demande ? Les autres lignes resteront inchangées.`
+    :`Supprimer définitivement cette demande ? Matériel concerné : ${summary}.`;
+  if(!confirm(confirmation)) return;
   const {error}=await db.from('reservations').delete().in('id',items.map(item=>item.id));
   if(error){toast('Erreur : '+error.message,5000);console.error(error);return;}
-  state.data.reservations=state.data.reservations.filter(item=>reservationRequestId(item)!==requestId);
-  await addHistory('deleted',`Demande de réservation (${summary}) supprimée par ${state.currentUser?.name||'?'}`);
-  renderSidebar(); renderPage(state.currentPage); toast('Demande supprimée de la base');
+  const deletedIds=new Set(items.map(item=>item.id));
+  state.data.reservations=state.data.reservations.filter(item=>!deletedIds.has(item.id));
+  await addHistory('deleted',admin
+    ?`Ligne de réservation ${equipment} × ${r.qty} supprimée par ${state.currentUser?.name||'?'}.`
+    :`Demande de réservation (${summary}) supprimée par ${state.currentUser?.name||'?'}`);
+  renderSidebar(); renderPage(state.currentPage);
+  toast(admin?'Ligne de réservation supprimée':'Demande supprimée de la base');
 }
 function showReservDetail(id){
   const r=state.data.reservations.find(r=>r.id===id); if(!r) return;
