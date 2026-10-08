@@ -22,6 +22,9 @@ let state = {
 // ===== HELPERS =====
 function getEquip(id) { return state.data.equipment.find(e => e.id === id); }
 function getAsso(id)  { return state.data.associations.find(a => a.id === id); }
+function sortAssociations() {
+  state.data.associations.sort((a,b)=>a.name.localeCompare(b.name,'fr',{sensitivity:'base'}));
+}
 function associationMark(association, size=32) {
   const logo=association?.logo;
   const style=`width:${size}px;height:${size}px;`;
@@ -63,6 +66,7 @@ async function loadData() {
         state.data.settings     = settings.data     || fallbackSettings;
         state.data.users        = users.data        || [];
         state.data.associations = associations.data || [];
+        sortAssociations();
         state.data.equipment    = equipment.data    || [];
         state.data.reservations = reservations.data || [];
         state.data.history      = history.data      || [];
@@ -733,6 +737,7 @@ async function submitAsso(){
       return;
     }
     Object.assign(getAsso(id),updates);
+    sortAssociations();
   }else{
     const newAsso={id:uid(),name,referent,email,phone,active:true,color:colors[state.data.associations.length%colors.length]};
     if(isAdmin()&&pendingAssociationLogo) newAsso.logo=pendingAssociationLogo;
@@ -743,6 +748,7 @@ async function submitAsso(){
       return;
     }
     state.data.associations.push(newAsso);
+    sortAssociations();
   }
   pendingAssociationLogo=null; removeAssociationLogo=false;
   closeModal('modal-asso'); renderSidebar(); renderPage(state.currentPage); toast('✓ Association enregistrée');
