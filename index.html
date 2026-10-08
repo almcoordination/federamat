@@ -101,6 +101,7 @@
       </div>
       <div class="nav-item admin-only" data-page="associations" onclick="navigate('associations')"><span class="nav-icon">🏢</span><span>Associations</span></div>
       <div class="nav-item admin-only" data-page="comptes" onclick="navigate('comptes')"><span class="nav-icon">🔑</span><span>Comptes</span></div>
+      <div class="nav-item admin-only" data-page="broadcast" onclick="navigate('broadcast')"><span class="nav-icon">✉️</span><span>Message collectif</span></div>
     </div>
     <div class="nav-section">
       <div class="nav-section-label">Mon compte</div>
@@ -219,6 +220,26 @@
           </div>
           <p style="font-size:13px;color:var(--text2);margin-bottom:16px;">Créez des comptes, réinitialisez les mots de passe ou supprimez des utilisateurs.</p>
           <div class="table-wrap"><table><thead><tr><th>Nom</th><th>Identifiant</th><th>Rôle</th><th>Association</th><th>Mot de passe</th><th>Actions</th></tr></thead><tbody id="comptes-tbody"></tbody></table></div>
+        </div>
+      </div>
+
+      <!-- MESSAGE COLLECTIF -->
+      <div id="page-broadcast" class="page admin-only">
+        <div class="card">
+          <div class="card-header"><div class="card-title">✉️ Envoyer un message collectif</div></div>
+          <p style="font-size:13px;color:var(--text2);margin-bottom:16px;">Le message sera envoyé aux adresses e-mail des associations actives, en copie cachée.</p>
+          <div class="form-group">
+            <label class="form-label" for="broadcast-subject">Objet *</label>
+            <input type="text" class="form-control" id="broadcast-subject" maxlength="180" placeholder="Objet de votre message">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="broadcast-message">Message *</label>
+            <textarea class="form-control" id="broadcast-message" rows="8" maxlength="10000" placeholder="Votre message à toutes les associations…"></textarea>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+            <span id="broadcast-recipient-count" style="font-size:12px;color:var(--text3);"></span>
+            <button class="btn btn-primary" id="broadcast-send-button" onclick="submitBroadcastEmail()">Envoyer à toutes les associations</button>
+          </div>
         </div>
       </div>
 

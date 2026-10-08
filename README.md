@@ -35,6 +35,8 @@ Uploadez tous les fichiers sur votre hébergeur (OVH, Infomaniak, etc.) ou dépl
 4. Testez une nouvelle réservation, puis son approbation ou son refus : les emails automatiques partent depuis l'adresse Gmail configurée dans Netlify, sans ouvrir de logiciel de messagerie.
 5. Aucun build command ni dossier `dist` n'est nécessaire.
 
+Dans l’administration, la rubrique **Message collectif** permet d’envoyer un objet et un texte aux adresses e-mail des associations actives. Les destinataires sont placés en copie cachée. L’envoi nécessite aussi le déploiement de la fonction Netlify `send-broadcast-email`.
+
 `GMAIL_USER` est l'adresse Gmail qui apparaîtra comme expéditeur. `GMAIL_APP_PASSWORD` est le mot de passe d'application Google, pas le mot de passe habituel du compte. `SUPABASE_SERVICE_ROLE_KEY` et `GMAIL_APP_PASSWORD` sont des secrets : configurez-les uniquement dans Netlify, jamais dans le code du navigateur.
 
 Si l'application affiche une erreur de connexion, ouvrez la console du navigateur (`F12`) : le message Supabase indique maintenant la table ou la permission en cause. Vérifiez aussi que l'URL du projet et la clé publique dans `js/app.js` correspondent au même projet.
@@ -68,6 +70,7 @@ Si l'application affiche une erreur de connexion, ouvrez la console du navigateu
 - **Réservations** : historique global avec filtres par statut
 - **Validations** : approbation/refus des demandes avec détection de conflits
 - **Associations** : gestion des membres (ajout, modification, suspension)
+- **Message collectif** : envoi d’un email aux associations actives ayant une adresse renseignée
 - **Historique** : journal complet de toutes les activités
 
 ### 🏢 Association membre
