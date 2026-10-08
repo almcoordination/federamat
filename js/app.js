@@ -5,6 +5,8 @@ const SUPABASE_URL     = 'https://cnywouxulqcxyifuxnxr.supabase.co';        // e
 const SUPABASE_ANON_KEY = 'sb_publishable_B-InHQUBKsYAE9m6Psslgg_56gzi384';  // clé "anon public"
 
 const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+let pendingAssociationLogo = null;
+let removeAssociationLogo = false;
 
 // ===== STATE =====
 let state = {
@@ -20,6 +22,21 @@ let state = {
 // ===== HELPERS =====
 function getEquip(id) { return state.data.equipment.find(e => e.id === id); }
 function getAsso(id)  { return state.data.associations.find(a => a.id === id); }
+function associationMark(association, size=32) {
+  const logo=association?.logo;
+  const style=`width:${size}px;height:${size}px;`;
+  if(typeof logo==='string'&&/^data:image\x2fjpeg;base64,[A-Za-z0-9+/]+=*$/.test(logo)){
+    return `<img class="asso-brand-mark" style="${style}" src="${logo}" alt="">`;
+  }
+  return `<span class="asso-brand-placeholder" style="${style}" aria-hidden="true"></span>`;
+}
+function associationIdentity(association, size=32) {
+  if(!association) return '—';
+  return `<span class="association-identity">${associationMark(association,size)}<span>${association.name}</span></span>`;
+}
+function isMissingAssociationLogoColumn(error) {
+  return ['42703','PGRST204'].includes(error?.code)&&/logo/i.test(error.message||'');
+}
 function fmtDate(d)   { if (!d) return '—'; const [y,m,day]=d.slice(0,10).split('-'); return `${day}/${m}/${y}`; }
 function todayStr()   { const today=new Date(); return `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`; }
 function uid()        { return 'x'+Math.random().toString(36).slice(2,9); }
@@ -194,7 +211,10 @@ function renderSidebar() {
   const rb=document.getElementById('sidebar-role-badge');
   rb.textContent=isAdmin()?'Administrateur':'Association';
   rb.className='user-role-badge '+(isAdmin()?'role-admin':'role-asso');
-  document.getElementById('sidebar-asso-line').textContent = asso?asso.name:'';
+  document.getElementById('sidebar-asso-line').innerHTML = asso?associationIdentity(asso,20):'';
+  const topbarAsso=document.getElementById('topbar-user-asso');
+  topbarAsso.innerHTML=asso?associationIdentity(asso,26):'';
+  topbarAsso.style.display=asso?'':'none';
   document.querySelectorAll('.admin-only').forEach(el=>el.style.display=isAdmin()?'':'none');
   const pending=groupReservationRequests(state.data.reservations.filter(r=>['pending','under_review'].includes(r.status))).length;
   const badge=document.getElementById('badge-approvals');
@@ -214,7 +234,7 @@ function renderDashboard() {
   const recent=[...myR].reverse().slice(0,5);
   document.getElementById('dash-recent').innerHTML=recent.map(r=>{
     const eq=getEquip(r.equip_id),as=getAsso(r.asso_id);
-    return `<tr><td><strong>${eq?.name||'?'}</strong></td>${isAdmin()?`<td>${as?.name||'?'}</td>`:''}<td>${fmtDate(r.date_start)}→${fmtDate(r.date_end)}</td><td><span class="badge badge-${r.status}">${statusLabel(r.status)}</span></td></tr>`;
+    return `<tr><td><strong>${eq?.name||'?'}</strong></td>${isAdmin()?`<td>${associationIdentity(as)}</td>`:''}<td>${fmtDate(r.date_start)}→${fmtDate(r.date_end)}</td><td><span class="badge badge-${r.status}">${statusLabel(r.status)}</span></td></tr>`;
   }).join('')||'<tr><td colspan="4" style="padding:16px;text-align:center;color:var(--text3);">Aucune réservation</td></tr>';
   const alerts=d.equipment.map(eq=>({eq,avail:computeAvailable(eq.id),pct:computeAvailable(eq.id)/eq.total})).filter(x=>x.pct<0.4).sort((a,b)=>a.pct-b.pct).slice(0,5);
   document.getElementById('dash-alerts').innerHTML=alerts.map(({eq,avail,pct})=>{
@@ -231,7 +251,7 @@ function renderDashboard() {
       const action=status==='pending'
         ?`<button class="btn btn-primary btn-sm" onclick="markReservationUnderReview('${request.id}')">Examiner la demande</button>`
         :`<button class="btn btn-primary btn-sm" onclick="navigate('approvals')">Poursuivre l’examen</button>`;
-      return `<div class="approval-card" style="padding:12px;"><div class="approval-header"><div><div class="approval-title" style="font-size:13px;">${summary}</div><div class="approval-meta">${as?.name||'?'} · ${fmtDate(first.date_start)}→${fmtDate(first.date_end)}</div></div><span class="badge badge-${status}">${statusLabel(status)}</span></div><div class="approval-actions">${action}<button class="btn btn-sm" onclick="navigate('approvals')">Détails</button></div></div>`;
+      return `<div class="approval-card" style="padding:12px;"><div class="approval-header"><div><div class="approval-title" style="font-size:13px;">${summary}</div><div class="approval-meta">${associationIdentity(as,22)} · ${fmtDate(first.date_start)}→${fmtDate(first.date_end)}</div></div><span class="badge badge-${status}">${statusLabel(status)}</span></div><div class="approval-actions">${action}<button class="btn btn-sm" onclick="navigate('approvals')">Détails</button></div></div>`;
     }).join('')||'<div style="padding:16px;text-align:center;color:var(--text3);font-size:13px;">✓ Aucune demande à traiter</div>';
   } else { dashAdmin.style.display='none'; }
 }
@@ -285,7 +305,7 @@ function renderCalendar() {
       ${dr.slice(0,3).map(r=>{
         const eq=getEquip(r.equip_id),as=getAsso(r.asso_id),isMine=r.asso_id===myAssoId;
         const label=`${eq?.name||'?'} · ${as?.name||'?'}`;
-        return `<div class="cal-event-pill ${['pending','under_review'].includes(r.status)?'pending':(isMine?'approved mine':'approved')}" title="${label}">${label}</div>`;
+        return `<div class="cal-event-pill ${['pending','under_review'].includes(r.status)?'pending':(isMine?'approved mine':'approved')}" title="${label}">${eq?.name||'?'} · ${associationIdentity(as,14)}</div>`;
       }).join('')}
       ${dr.length>3?`<div style="font-size:9px;color:var(--text3);">+${dr.length-3} autres</div>`:''}
     </div>`;
@@ -304,7 +324,7 @@ function renderStock() {
     const avail=computeAvailableForPeriod(eq.id,state.stockDate,state.stockDate), pct=Math.round(avail/eq.total*100);
     const pcls=pct<20?'danger':pct<40?'warn':'', scls=avail===0?'unavailable':pct<30?'low':'available', stxt=avail===0?'Indisponible':pct<30?'Stock bas':'Disponible';
     const owner=eq.owner_asso_id?getAsso(eq.owner_asso_id):null;
-    return `<tr><td><strong>${eq.name}</strong><div style="font-size:11px;color:var(--text3);">${eq.location||''}</div>${owner?`<div style="font-size:11px;color:var(--purple);">🏢 ${owner.name}</div>`:'<div style="font-size:11px;color:var(--text3);">🏛️ Fédération</div>'}</td><td><span class="cat-tag ${catCls[eq.cat]||''}">${catMap[eq.cat]||eq.cat}</span></td><td>${eq.total}</td><td><div class="progress-wrap"><span style="font-size:13px;font-weight:500;">${avail}</span><div class="progress-bar"><div class="progress-fill ${pcls}" style="width:${pct}%"></div></div><span class="progress-num">${pct}%</span></div></td><td><span class="badge badge-${scls}">${stxt}</span></td><td style="font-size:12px;color:var(--text3);">${eq.state}</td><td>${isAdmin()?`<button class="btn btn-sm" onclick="openEditEquip('${eq.id}')">Modifier</button>`:`<button class="btn btn-sm" onclick="openNewReservation(null,'${eq.id}')">Réserver</button>`}</td></tr>`;
+    return `<tr><td><strong>${eq.name}</strong><div style="font-size:11px;color:var(--text3);">${eq.location||''}</div>${owner?`<div style="font-size:11px;color:var(--purple);">${associationIdentity(owner,20)}</div>`:'<div style="font-size:11px;color:var(--text3);">Fédération</div>'}</td><td><span class="cat-tag ${catCls[eq.cat]||''}">${catMap[eq.cat]||eq.cat}</span></td><td>${eq.total}</td><td><div class="progress-wrap"><span style="font-size:13px;font-weight:500;">${avail}</span><div class="progress-bar"><div class="progress-fill ${pcls}" style="width:${pct}%"></div></div><span class="progress-num">${pct}%</span></div></td><td><span class="badge badge-${scls}">${stxt}</span></td><td style="font-size:12px;color:var(--text3);">${eq.state}</td><td>${isAdmin()?`<button class="btn btn-sm" onclick="openEditEquip('${eq.id}')">Modifier</button>`:`<button class="btn btn-sm" onclick="openNewReservation(null,'${eq.id}')">Réserver</button>`}</td></tr>`;
   }).join('')||'<tr><td colspan="7" style="padding:24px;text-align:center;color:var(--text3);">Aucun équipement</td></tr>';
 }
 function setStockFilter(f){state.stockFilter=f;document.querySelectorAll('#stock-filters .filter-btn').forEach(b=>b.classList.toggle('active',b.dataset.filter===f));renderStock();}
@@ -318,7 +338,7 @@ function renderReservations() {
   document.getElementById('reservations-tbody').innerHTML=data.map(r=>{
     const eq=getEquip(r.equip_id),as=getAsso(r.asso_id);
     const actions=isAdmin()?`<button class="btn btn-sm btn-danger" onclick="deleteReserv('${r.id}')">Supprimer la demande</button>`:r.status==='pending'||r.status==='under_review'?`<button class="btn btn-sm btn-danger" onclick="cancelReserv('${r.id}')">Annuler</button>`:['approved','rejected'].includes(r.status)?`<button class="btn btn-sm btn-danger" onclick="deleteReserv('${r.id}')">Supprimer</button>`:'';
-    return `<tr><td><strong>${eq?.name||'?'}</strong></td>${isAdmin()?`<td>${as?.name||'?'}</td>`:''}<td>${fmtDate(r.date_start)}</td><td>${fmtDate(r.date_end)}</td><td>${r.qty}</td><td><span class="badge badge-${r.status}">${statusLabel(r.status)}</span></td><td><button class="btn btn-sm" onclick="showReservDetail('${r.id}')">Voir</button>${actions}</td></tr>`;
+    return `<tr><td><strong>${eq?.name||'?'}</strong></td>${isAdmin()?`<td>${associationIdentity(as)}</td>`:''}<td>${fmtDate(r.date_start)}</td><td>${fmtDate(r.date_end)}</td><td>${r.qty}</td><td><span class="badge badge-${r.status}">${statusLabel(r.status)}</span></td><td><button class="btn btn-sm" onclick="showReservDetail('${r.id}')">Voir</button>${actions}</td></tr>`;
   }).join('')||`<tr><td colspan="7"><div style="text-align:center;padding:32px;color:var(--text3);">📋 Aucune réservation</div></td></tr>`;
   const th=document.getElementById('th-asso'); if(th) th.style.display=isAdmin()?'':'none';
 }
@@ -360,9 +380,9 @@ function showReservDetail(id){
   const as=getAsso(r.asso_id),statuses=[...new Set(requestItems.map(item=>statusLabel(item.status)))].join(', ');
   const equipmentList=requestItems.map(item=>{
     const eq=getEquip(item.equip_id),owner=eq?.owner_asso_id?getAsso(eq.owner_asso_id):null;
-    return `<li>${eq?.name||'?'} × ${item.qty}${owner?` — prêteur : ${owner.name}`:''} <span class="badge badge-${item.status}">${statusLabel(item.status)}</span></li>`;
+    return `<li>${eq?.name||'?'} × ${item.qty}${owner?` — prêteur : ${associationIdentity(owner,20)}`:''} <span class="badge badge-${item.status}">${statusLabel(item.status)}</span></li>`;
   }).join('');
-  document.getElementById('detail-content').innerHTML=`<div style="margin-bottom:12px;"><span class="badge badge-${r.status}">${statuses}</span></div><table style="width:100%;font-size:13px;border-collapse:collapse;"><tr><td style="padding:7px 0;color:var(--text3);width:40%;border-bottom:1px solid var(--border);">Association</td><td style="border-bottom:1px solid var(--border);">${as?.name||'?'}</td></tr><tr><td style="padding:7px 0;color:var(--text3);border-bottom:1px solid var(--border);">Matériel demandé</td><td style="border-bottom:1px solid var(--border);"><ul style="margin:0;padding-left:18px;">${equipmentList}</ul></td></tr><tr><td style="padding:7px 0;color:var(--text3);border-bottom:1px solid var(--border);">Du</td><td style="border-bottom:1px solid var(--border);">${fmtDate(r.date_start)}</td></tr><tr><td style="padding:7px 0;color:var(--text3);border-bottom:1px solid var(--border);">Au</td><td style="border-bottom:1px solid var(--border);">${fmtDate(r.date_end)}</td></tr><tr><td style="padding:7px 0;color:var(--text3);border-bottom:1px solid var(--border);">Lieu</td><td style="border-bottom:1px solid var(--border);">${r.location||'—'}</td></tr><tr><td style="padding:7px 0;color:var(--text3);">Motif</td><td>${r.reason||'—'}</td></tr>${r.notes?`<tr><td style="padding:7px 0;color:var(--text3);">Notes admin</td><td style="color:var(--accent-dark);">${r.notes}</td></tr>`:''}</table>`;
+  document.getElementById('detail-content').innerHTML=`<div style="margin-bottom:12px;"><span class="badge badge-${r.status}">${statuses}</span></div><table style="width:100%;font-size:13px;border-collapse:collapse;"><tr><td style="padding:7px 0;color:var(--text3);width:40%;border-bottom:1px solid var(--border);">Association</td><td style="border-bottom:1px solid var(--border);">${associationIdentity(as)}</td></tr><tr><td style="padding:7px 0;color:var(--text3);border-bottom:1px solid var(--border);">Matériel demandé</td><td style="border-bottom:1px solid var(--border);"><ul style="margin:0;padding-left:18px;">${equipmentList}</ul></td></tr><tr><td style="padding:7px 0;color:var(--text3);border-bottom:1px solid var(--border);">Du</td><td style="border-bottom:1px solid var(--border);">${fmtDate(r.date_start)}</td></tr><tr><td style="padding:7px 0;color:var(--text3);border-bottom:1px solid var(--border);">Au</td><td style="border-bottom:1px solid var(--border);">${fmtDate(r.date_end)}</td></tr><tr><td style="padding:7px 0;color:var(--text3);border-bottom:1px solid var(--border);">Lieu</td><td style="border-bottom:1px solid var(--border);">${r.location||'—'}</td></tr><tr><td style="padding:7px 0;color:var(--text3);">Motif</td><td>${r.reason||'—'}</td></tr>${r.notes?`<tr><td style="padding:7px 0;color:var(--text3);">Notes admin</td><td style="color:var(--accent-dark);">${r.notes}</td></tr>`:''}</table>`;
   openModal('modal-detail');
 }
 
@@ -380,12 +400,12 @@ function renderApprovals(){
       const actions=r.status==='under_review'
         ?`<button class="btn btn-primary btn-sm" onclick="decideReservationLine('${r.id}','approved')">Valider cette ligne</button> <button class="btn btn-danger btn-sm" onclick="decideReservationLine('${r.id}','rejected')">Refuser</button>`
         :r.status==='pending'?'En attente du début de l’examen':'—';
-      return `<tr><td><strong>${eq?.name||'?'}</strong><div class="approval-meta">${owner?.name||'Matériel fédéral'}</div></td><td>${r.qty}</td><td><span class="badge badge-${r.status}">${statusLabel(r.status)}</span></td><td>${actions}</td></tr>`;
+      return `<tr><td><strong>${eq?.name||'?'}</strong><div class="approval-meta">${owner?associationIdentity(owner,20):'Matériel fédéral'}</div></td><td>${r.qty}</td><td><span class="badge badge-${r.status}">${statusLabel(r.status)}</span></td><td>${actions}</td></tr>`;
     }).join('');
     return `<div class="approval-card" id="acard-${request.id}">
       <div class="approval-header">
         <div>
-          <div class="approval-title">Demande de ${asso?.name||'?'}</div>
+          <div class="approval-title">Demande de ${associationIdentity(asso,26)}</div>
           <div class="approval-meta">Du ${fmtDate(first.date_start)} au ${fmtDate(first.date_end)} · ${reservations.length} matériel(aux)</div>
           <div class="approval-meta">Lieu : ${first.location||'—'}</div>
         </div>
@@ -431,8 +451,7 @@ async function decideReservationLine(reservationId,status){
 function renderAssociations(){
   const counts={}; state.data.reservations.forEach(r=>{counts[r.asso_id]=(counts[r.asso_id]||0)+1;});
   document.getElementById('assos-tbody').innerHTML=state.data.associations.map(a=>{
-    const initials=a.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
-    return `<tr><td><div style="display:flex;align-items:center;gap:10px;"><div class="avatar" style="background:${a.color}22;color:${a.color};">${initials}</div><strong>${a.name}</strong></div></td><td>${a.referent}</td><td style="color:var(--info);">${a.email}</td><td>${a.phone}</td><td>${counts[a.id]||0}</td><td><span class="badge ${a.active?'badge-active':'badge-inactive'}">${a.active?'Active':'Suspendue'}</span></td><td><button class="btn btn-sm" onclick="openEditAsso('${a.id}')">Gérer</button></td></tr>`;
+    return `<tr><td>${associationIdentity(a)}</td><td>${a.referent}</td><td style="color:var(--info);">${a.email}</td><td>${a.phone}</td><td>${counts[a.id]||0}</td><td><span class="badge ${a.active?'badge-active':'badge-inactive'}">${a.active?'Active':'Suspendue'}</span></td><td><button class="btn btn-sm" onclick="openEditAsso('${a.id}')">Gérer</button></td></tr>`;
   }).join('');
 }
 async function deleteAsso(id){
@@ -484,8 +503,7 @@ async function toggleAsso(id){
 function renderAnnuaire(){
   const actives=state.data.associations.filter(a=>a.active);
   document.getElementById('annuaire-list').innerHTML=actives.length?actives.map(a=>{
-    const initials=a.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
-    return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px;display:flex;align-items:center;gap:16px;"><div class="avatar" style="width:44px;height:44px;font-size:16px;background:${a.color}22;color:${a.color};flex-shrink:0;">${initials}</div><div style="flex:1;"><div style="font-size:14px;font-weight:600;color:var(--text);">${a.name}</div><div style="font-size:12px;color:var(--text2);margin-top:2px;">Référent : ${a.referent}</div></div><div style="text-align:right;flex-shrink:0;"><div style="font-size:13px;color:var(--accent);">✉️ ${a.email}</div><div style="font-size:12px;color:var(--text2);margin-top:4px;">📞 ${a.phone||'—'}</div></div></div>`;
+    return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px;display:flex;align-items:center;gap:16px;">${associationMark(a,44)}<div style="flex:1;"><div style="font-size:14px;font-weight:600;color:var(--text);">${a.name}</div><div style="font-size:12px;color:var(--text2);margin-top:2px;">Référent : ${a.referent}</div></div><div style="text-align:right;flex-shrink:0;"><div style="font-size:13px;color:var(--accent);">✉️ ${a.email}</div><div style="font-size:12px;color:var(--text2);margin-top:4px;">📞 ${a.phone||'—'}</div></div></div>`;
   }).join(''):`<div style="text-align:center;padding:48px;color:var(--text3);"><div style="font-size:36px;margin-bottom:12px;">🏢</div><div>Aucune association enregistrée.</div></div>`;
 }
 
@@ -535,7 +553,7 @@ function renderAvailableEquipment(preselectedId=null){
     const pct=eq.total?Math.round(qty/eq.total*100):0;
     const progressClass=pct<20?'danger':pct<40?'warn':'';
     return `<tr class="reservation-equipment-item">
-      <td><strong>${eq.name}</strong><div class="reservation-equipment-meta">${owner?owner.name:'Matériel fédéral'}</div></td>
+      <td><strong>${eq.name}</strong><div class="reservation-equipment-meta">${owner?associationIdentity(owner,20):'Matériel fédéral'}</div></td>
       <td>${categories[eq.cat]||eq.cat}</td><td>${eq.total}</td>
       <td><div class="progress-wrap"><span>${qty}</span><div class="progress-bar"><div class="progress-fill ${progressClass}" style="width:${pct}%"></div></div><span class="progress-num">${pct}%</span></div></td>
       <td>${eq.state||'—'}</td>
@@ -630,6 +648,7 @@ function openAddAsso(){
   document.getElementById('asso-delete-btn').style.display='none';
   document.getElementById('asso-toggle-btn').style.display='none';
   ['asso-id','asso-name','asso-referent','asso-email','asso-phone'].forEach(id=>document.getElementById(id).value='');
+  resetAssociationLogoForm(null);
   openModal('modal-asso');
 }
 function openEditAsso(id){
@@ -644,15 +663,88 @@ function openEditAsso(id){
   document.getElementById('asso-referent').value=a.referent;
   document.getElementById('asso-email').value=a.email;
   document.getElementById('asso-phone').value=a.phone;
+  resetAssociationLogoForm(a);
   openModal('modal-asso');
+}
+function resetAssociationLogoForm(association){
+  pendingAssociationLogo=null;
+  removeAssociationLogo=false;
+  document.getElementById('asso-logo-file').value='';
+  document.getElementById('asso-logo-remove').checked=false;
+  document.getElementById('asso-logo-remove-wrap').style.display=association?.logo?'':'none';
+  document.getElementById('asso-logo-preview').innerHTML=associationMark(association,56);
+}
+function toggleAssociationLogoRemoval(remove){
+  if(!isAdmin()) return;
+  removeAssociationLogo=remove;
+  if(remove) pendingAssociationLogo=null;
+  const association=getAsso(document.getElementById('asso-id').value);
+  document.getElementById('asso-logo-preview').innerHTML=associationMark(
+    {logo:remove?null:(pendingAssociationLogo||association?.logo)},56
+  );
+}
+async function selectAssociationLogo(file){
+  if(!isAdmin()||!file) return;
+  const input=document.getElementById('asso-logo-file');
+  try{
+    if(file.size>5*1024*1024) throw new Error('Le fichier JPEG doit faire 5 Mo maximum.');
+    const signature=new Uint8Array(await file.slice(0,3).arrayBuffer());
+    if(signature[0]!==0xff||signature[1]!==0xd8||signature[2]!==0xff){
+      throw new Error('Veuillez choisir une image au format JPEG.');
+    }
+    const image=await createImageBitmap(file);
+    const scale=Math.min(1,512/Math.max(image.width,image.height));
+    const canvas=document.createElement('canvas');
+    canvas.width=Math.max(1,Math.round(image.width*scale));
+    canvas.height=Math.max(1,Math.round(image.height*scale));
+    canvas.getContext('2d').drawImage(image,0,0,canvas.width,canvas.height);
+    image.close();
+    const jpeg=await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',0.82));
+    if(!jpeg) throw new Error('Impossible de traiter cette image JPEG.');
+    const logo=await new Promise((resolve,reject)=>{
+      const reader=new FileReader();
+      reader.onload=()=>resolve(reader.result);
+      reader.onerror=()=>reject(new Error('Impossible de lire cette image JPEG.'));
+      reader.readAsDataURL(jpeg);
+    });
+    pendingAssociationLogo=logo;
+    removeAssociationLogo=false;
+    document.getElementById('asso-logo-remove').checked=false;
+    document.getElementById('asso-logo-preview').innerHTML=associationMark({logo},56);
+  }catch(error){
+    console.error('Logo association :',error);
+    toast(error.message||'Impossible de charger ce logo JPEG.',5000);
+  }finally{
+    input.value='';
+  }
 }
 async function submitAsso(){
   const id=document.getElementById('asso-id').value,name=document.getElementById('asso-name').value.trim(),referent=document.getElementById('asso-referent').value.trim(),email=document.getElementById('asso-email').value.trim(),phone=document.getElementById('asso-phone').value.trim();
   if(!name||!referent||!email){toast('Nom, référent et email obligatoires.');return;}
   const colors=['#1D9E75','#185FA5','#534AB7','#BA7517','#D85A30','#3B6D11','#993556','#888780'];
-  if(id){ await dbUpdate('associations', id, {name,referent,email,phone}); Object.assign(getAsso(id),{name,referent,email,phone}); }
-  else { const newAsso={id:uid(),name,referent,email,phone,active:true,color:colors[state.data.associations.length%colors.length]}; await dbInsert('associations', newAsso); state.data.associations.push(newAsso); }
-  closeModal('modal-asso'); renderAssociations(); toast('✓ Association enregistrée');
+  const updates={name,referent,email,phone};
+  if(isAdmin()&&(pendingAssociationLogo||removeAssociationLogo)) updates.logo=removeAssociationLogo?null:pendingAssociationLogo;
+  if(id){
+    const {error}=await db.from('associations').update(updates).eq('id',id);
+    if(error){
+      console.error(error);
+      toast(isMissingAssociationLogoColumn(error)&&'logo'in updates?'Ajoutez d’abord la colonne logo à la table associations avec la migration Supabase.':`Erreur : ${error.message}`,7000);
+      return;
+    }
+    Object.assign(getAsso(id),updates);
+  }else{
+    const newAsso={id:uid(),name,referent,email,phone,active:true,color:colors[state.data.associations.length%colors.length]};
+    if(isAdmin()&&pendingAssociationLogo) newAsso.logo=pendingAssociationLogo;
+    const {error}=await db.from('associations').insert(newAsso);
+    if(error){
+      console.error(error);
+      toast(isMissingAssociationLogoColumn(error)&&'logo'in newAsso?'Ajoutez d’abord la colonne logo à la table associations avec la migration Supabase.':`Erreur : ${error.message}`,7000);
+      return;
+    }
+    state.data.associations.push(newAsso);
+  }
+  pendingAssociationLogo=null; removeAssociationLogo=false;
+  closeModal('modal-asso'); renderSidebar(); renderPage(state.currentPage); toast('✓ Association enregistrée');
 }
 
 // ===== PROFIL =====
@@ -662,7 +754,7 @@ function renderProfile(){
   document.getElementById('profile-name-input').value=u.name;
   document.getElementById('profile-login').textContent=u.login;
   document.getElementById('profile-role').textContent=isAdmin()?'Administrateur fédéral':'Association membre';
-  document.getElementById('profile-asso-name').textContent=a?a.name:'—';
+  document.getElementById('profile-asso-name').innerHTML=associationIdentity(a);
   document.getElementById('profile-asso-row').style.display=a?'':'none';
   document.getElementById('profile-name-success').style.display='none';
   ['pw-current','pw-new','pw-confirm'].forEach(id=>document.getElementById(id).value='');
@@ -697,7 +789,7 @@ function renderComptes(){
       <td><strong>${u.name}</strong></td>
       <td><code style="background:var(--surface2);padding:2px 7px;border-radius:4px;font-size:12px;">${u.login}</code></td>
       <td><span class="user-role-badge ${u.role==='admin'?'role-admin':'role-asso'}">${u.role==='admin'?'Administrateur':'Association'}</span></td>
-      <td>${a?a.name:'—'}</td>
+      <td>${associationIdentity(a)}</td>
       <td style="display:flex;gap:6px;flex-wrap:wrap;">
         <button class="btn btn-sm" onclick="openAdminChangePw('${u.id}')">🔑 Mot de passe</button>
         ${u.id!==state.currentUser.id?`<button class="btn btn-sm btn-danger" onclick="deleteUser('${u.id}')">🗑️ Supprimer</button>`:''}

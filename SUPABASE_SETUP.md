@@ -57,7 +57,8 @@ create table if not exists associations (
   email text,
   phone text,
   active boolean default true,
-  color text default '#1D9E75'
+  color text default '#1D9E75',
+  logo text
 );
 
 -- Table des équipements
@@ -105,6 +106,12 @@ Si la table `reservations` existe déjà, exécutez aussi cette migration dans l
 alter table reservations add column if not exists request_id text;
 alter table reservations add column if not exists location text;
 create index if not exists reservations_request_id_idx on reservations(request_id);
+```
+
+Pour activer le téléversement des logos d’association sur une base existante, exécutez aussi :
+
+```sql
+alter table associations add column if not exists logo text;
 ```
 
 ## 4. Configurer les permissions (RLS)

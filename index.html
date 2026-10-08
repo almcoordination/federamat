@@ -102,6 +102,7 @@
   <main class="main">
     <div class="topbar">
       <span class="topbar-title" id="topbar-title">Tableau de bord</span>
+      <div class="topbar-user-asso" id="topbar-user-asso" style="display:none;"></div>
       <div class="topbar-actions">
         <button class="btn btn-primary" onclick="openNewReservation()">+ Nouvelle réservation</button>
       </div>
@@ -311,6 +312,15 @@
     <div class="form-row">
       <div class="form-group"><label class="form-label">Email *</label><input type="email" class="form-control" id="asso-email" placeholder="contact@asso.fr"></div>
       <div class="form-group"><label class="form-label">Téléphone</label><input type="tel" class="form-control" id="asso-phone" placeholder="06 XX XX XX XX"></div>
+    </div>
+    <div class="form-group admin-only" id="asso-logo-controls" style="display:none;">
+      <label class="form-label" for="asso-logo-file">Logo de l’association (JPEG)</label>
+      <input type="file" class="form-control" id="asso-logo-file" accept=".jpg,.jpeg,image/jpeg" onchange="selectAssociationLogo(this.files[0])">
+      <div id="asso-logo-preview" class="asso-logo-preview"></div>
+      <label id="asso-logo-remove-wrap" style="display:none;margin-top:8px;font-size:12px;color:var(--text2);">
+        <input type="checkbox" id="asso-logo-remove" onchange="toggleAssociationLogoRemoval(this.checked)">
+        Retirer le logo
+      </label>
     </div>
     <div class="modal-footer">
       <button class="btn" id="asso-toggle-btn" style="display:none;" onclick="toggleAsso(document.getElementById('asso-id').value)"></button>

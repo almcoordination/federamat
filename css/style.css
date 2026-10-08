@@ -97,6 +97,8 @@ input, select, textarea { font-family: inherit; font-size: 13px; }
   flex-shrink: 0;
 }
 .topbar-title { font-size: 16px; font-weight: 600; color: var(--text); flex: 1; }
+.topbar-user-asso { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--text); }
+.association-identity { display: inline-flex; align-items: center; gap: 8px; vertical-align: middle; }
 .topbar-actions { display: flex; gap: 8px; }
 
 .content { flex: 1; overflow-y: auto; padding: 24px; }
@@ -309,6 +311,10 @@ textarea.form-control { resize: vertical; min-height: 80px; }
 /* ===== AVATAR ===== */
 .avatar { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; flex-shrink: 0; }
 .avatar-sm { width: 24px; height: 24px; font-size: 9px; }
+.asso-brand-mark, .asso-brand-placeholder { width: 32px; height: 32px; box-sizing: border-box; flex: 0 0 auto; border: 1px solid var(--border); border-radius: 4px; background: #fff; }
+.asso-brand-mark { display: block; object-fit: contain; }
+.asso-logo-preview { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+.asso-logo-preview .asso-brand-mark, .asso-logo-preview .asso-brand-placeholder { width: 56px; height: 56px; }
 
 /* ===== EMPTY STATE ===== */
 .empty-state { text-align: center; padding: 48px; color: var(--text3); }
