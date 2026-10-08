@@ -432,7 +432,7 @@ function renderAssociations(){
   const counts={}; state.data.reservations.forEach(r=>{counts[r.asso_id]=(counts[r.asso_id]||0)+1;});
   document.getElementById('assos-tbody').innerHTML=state.data.associations.map(a=>{
     const initials=a.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
-    return `<tr><td><div style="display:flex;align-items:center;gap:10px;"><div class="avatar" style="background:${a.color}22;color:${a.color};">${initials}</div><strong>${a.name}</strong></div></td><td>${a.referent}</td><td style="color:var(--info);">${a.email}</td><td>${a.phone}</td><td>${counts[a.id]||0}</td><td><span class="badge ${a.active?'badge-active':'badge-inactive'}">${a.active?'Active':'Suspendue'}</span></td><td><button class="btn btn-sm" onclick="openEditAsso('${a.id}')">Modifier</button> <button class="btn btn-sm" onclick="toggleAsso('${a.id}')">${a.active?'Suspendre':'Réactiver'}</button> <button class="btn btn-sm btn-danger" onclick="deleteAsso('${a.id}')">Supprimer</button></td></tr>`;
+    return `<tr><td><div style="display:flex;align-items:center;gap:10px;"><div class="avatar" style="background:${a.color}22;color:${a.color};">${initials}</div><strong>${a.name}</strong></div></td><td>${a.referent}</td><td style="color:var(--info);">${a.email}</td><td>${a.phone}</td><td>${counts[a.id]||0}</td><td><span class="badge ${a.active?'badge-active':'badge-inactive'}">${a.active?'Active':'Suspendue'}</span></td><td><button class="btn btn-sm" onclick="openEditAsso('${a.id}')">Gérer</button></td></tr>`;
   }).join('');
 }
 async function deleteAsso(id){
@@ -468,10 +468,16 @@ async function deleteAsso(id){
   closeModal('modal-asso'); renderSidebar(); renderPage(state.currentPage);
 }
 async function toggleAsso(id){
+  if(!isAdmin()) return;
   const a=getAsso(id); if(!a) return;
-  a.active=!a.active;
-  await dbUpdate('associations', id, {active:a.active});
-  renderAssociations(); toast(a.active?'Association réactivée':'Association suspendue');
+  const active=!a.active;
+  const ok=await dbUpdate('associations', id, {active});
+  if(!ok) return;
+  a.active=active;
+  const toggleButton=document.getElementById('asso-toggle-btn');
+  toggleButton.textContent=active?'Suspendre l’association':'Réactiver l’association';
+  renderSidebar(); renderPage(state.currentPage);
+  toast(active?'Association réactivée':'Association suspendue');
 }
 
 // ===== ANNUAIRE =====
@@ -619,8 +625,27 @@ async function deleteEquip(id){
 }
 
 // ===== ASSOCIATIONS MODAL =====
-function openAddAsso(){document.getElementById('asso-modal-title').textContent='Ajouter une association';document.getElementById('asso-delete-btn').style.display='none';['asso-id','asso-name','asso-referent','asso-email','asso-phone'].forEach(id=>document.getElementById(id).value='');openModal('modal-asso');}
-function openEditAsso(id){const a=getAsso(id);if(!a)return;document.getElementById('asso-modal-title').textContent='Modifier';document.getElementById('asso-delete-btn').style.display='';document.getElementById('asso-id').value=a.id;document.getElementById('asso-name').value=a.name;document.getElementById('asso-referent').value=a.referent;document.getElementById('asso-email').value=a.email;document.getElementById('asso-phone').value=a.phone;openModal('modal-asso');}
+function openAddAsso(){
+  document.getElementById('asso-modal-title').textContent='Ajouter une association';
+  document.getElementById('asso-delete-btn').style.display='none';
+  document.getElementById('asso-toggle-btn').style.display='none';
+  ['asso-id','asso-name','asso-referent','asso-email','asso-phone'].forEach(id=>document.getElementById(id).value='');
+  openModal('modal-asso');
+}
+function openEditAsso(id){
+  const a=getAsso(id); if(!a)return;
+  document.getElementById('asso-modal-title').textContent='Gérer l’association';
+  document.getElementById('asso-delete-btn').style.display='';
+  const toggleButton=document.getElementById('asso-toggle-btn');
+  toggleButton.style.display='';
+  toggleButton.textContent=a.active?'Suspendre l’association':'Réactiver l’association';
+  document.getElementById('asso-id').value=a.id;
+  document.getElementById('asso-name').value=a.name;
+  document.getElementById('asso-referent').value=a.referent;
+  document.getElementById('asso-email').value=a.email;
+  document.getElementById('asso-phone').value=a.phone;
+  openModal('modal-asso');
+}
 async function submitAsso(){
   const id=document.getElementById('asso-id').value,name=document.getElementById('asso-name').value.trim(),referent=document.getElementById('asso-referent').value.trim(),email=document.getElementById('asso-email').value.trim(),phone=document.getElementById('asso-phone').value.trim();
   if(!name||!referent||!email){toast('Nom, référent et email obligatoires.');return;}

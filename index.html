@@ -313,6 +313,7 @@
       <div class="form-group"><label class="form-label">Téléphone</label><input type="tel" class="form-control" id="asso-phone" placeholder="06 XX XX XX XX"></div>
     </div>
     <div class="modal-footer">
+      <button class="btn" id="asso-toggle-btn" style="display:none;" onclick="toggleAsso(document.getElementById('asso-id').value)"></button>
       <button class="btn btn-danger" id="asso-delete-btn" style="display:none;margin-right:auto;" onclick="deleteAsso(document.getElementById('asso-id').value)">Supprimer l’association</button>
       <button class="btn" onclick="closeModal('modal-asso')">Annuler</button>
       <button class="btn btn-primary" onclick="submitAsso()">Enregistrer</button>
