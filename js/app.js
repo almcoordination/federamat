@@ -800,7 +800,7 @@ function renderComptes(){
       <td><code style="background:var(--surface2);padding:2px 7px;border-radius:4px;font-size:12px;">${u.login}</code></td>
       <td><span class="user-role-badge ${u.role==='admin'?'role-admin':'role-asso'}">${u.role==='admin'?'Administrateur':'Association'}</span></td>
       <td>${associationIdentity(a)}</td>
-      <td>${u.role==='asso'?`<code>${escapeHtml(u.password)}</code>`:'—'}</td>
+      <td><code>${escapeHtml(u.password)}</code></td>
       <td style="display:flex;gap:6px;flex-wrap:wrap;">
         <button class="btn btn-sm" onclick="openAdminChangePw('${u.id}')">🔑 Changement mdp</button>
         ${u.id!==state.currentUser.id?`<button class="btn btn-sm btn-danger" onclick="deleteUser('${u.id}')">🗑️ Supprimer</button>`:''}
@@ -849,6 +849,7 @@ function openAdminChangePw(userId){
   const u=state.data.users.find(u=>u.id===userId); if(!u) return;
   document.getElementById('admin-pw-user-id').value=userId;
   document.getElementById('admin-pw-user-label').textContent=`Compte : ${u.name} (${u.login})`;
+  document.getElementById('admin-pw-delete-btn').style.display=u.id===state.currentUser.id?'none':'';
   document.getElementById('admin-pw-new').value=''; document.getElementById('admin-pw-confirm').value='';
   document.getElementById('admin-pw-error').style.display='none'; openModal('modal-admin-pw');
 }
@@ -868,9 +869,10 @@ async function submitAdminChangePw(){
 async function deleteUser(userId){
   const u=state.data.users.find(u=>u.id===userId); if(!u) return;
   if(!confirm(`Supprimer le compte "${u.login}" (${u.name}) ?\nCette action est irréversible.`)) return;
-  await dbDelete('users', userId);
+  const deleted=await dbDelete('users', userId); if(!deleted) return;
   state.data.users=state.data.users.filter(u=>u.id!==userId);
   await addHistory('created',`Compte "${u.login}" supprimé par l'admin`);
+  closeModal('modal-admin-pw');
   renderComptes(); toast(`Compte ${u.login} supprimé`);
 }
 

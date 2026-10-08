@@ -343,6 +343,7 @@
     <div class="form-group"><label class="form-label">Nouveau mot de passe *</label><input type="password" class="form-control" id="admin-pw-new" placeholder="6 caractères minimum"></div>
     <div class="form-group"><label class="form-label">Confirmer *</label><input type="password" class="form-control" id="admin-pw-confirm" placeholder="••••••••"></div>
     <div class="modal-footer">
+      <button class="btn btn-danger" id="admin-pw-delete-btn" onclick="deleteUser(document.getElementById('admin-pw-user-id').value)">🗑️ Supprimer</button>
       <button class="btn" onclick="closeModal('modal-admin-pw')">Annuler</button>
       <button class="btn btn-primary" onclick="submitAdminChangePw()">Enregistrer</button>
     </div>
