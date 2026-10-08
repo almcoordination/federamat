@@ -317,7 +317,7 @@ function renderReservations() {
   data=[...data].reverse();
   document.getElementById('reservations-tbody').innerHTML=data.map(r=>{
     const eq=getEquip(r.equip_id),as=getAsso(r.asso_id);
-    const actions=!isAdmin()&&['pending','under_review'].includes(r.status)?`<button class="btn btn-sm btn-danger" onclick="cancelReserv('${r.id}')">Annuler</button>`:!isAdmin()&&['approved','rejected'].includes(r.status)?`<button class="btn btn-sm btn-danger" onclick="deleteReserv('${r.id}')">Supprimer</button>`:'';
+    const actions=isAdmin()?`<button class="btn btn-sm btn-danger" onclick="deleteReserv('${r.id}')">Supprimer la demande</button>`:r.status==='pending'||r.status==='under_review'?`<button class="btn btn-sm btn-danger" onclick="cancelReserv('${r.id}')">Annuler</button>`:['approved','rejected'].includes(r.status)?`<button class="btn btn-sm btn-danger" onclick="deleteReserv('${r.id}')">Supprimer</button>`:'';
     return `<tr><td><strong>${eq?.name||'?'}</strong></td>${isAdmin()?`<td>${as?.name||'?'}</td>`:''}<td>${fmtDate(r.date_start)}</td><td>${fmtDate(r.date_end)}</td><td>${r.qty}</td><td><span class="badge badge-${r.status}">${statusLabel(r.status)}</span></td><td><button class="btn btn-sm" onclick="showReservDetail('${r.id}')">Voir</button>${actions}</td></tr>`;
   }).join('')||`<tr><td colspan="7"><div style="text-align:center;padding:32px;color:var(--text3);">📋 Aucune réservation</div></td></tr>`;
   const th=document.getElementById('th-asso'); if(th) th.style.display=isAdmin()?'':'none';
@@ -333,16 +333,17 @@ async function cancelReserv(id){
   renderSidebar(); renderReservations(); toast('Ligne de réservation annulée');
 }
 async function deleteReserv(id){
-  const r=state.data.reservations.find(r=>r.id===id&&['approved','rejected'].includes(r.status)); if(!r) return;
+  if(!isAdmin()) return;
+  const r=state.data.reservations.find(r=>r.id===id); if(!r) return;
   const requestId=reservationRequestId(r);
   const items=state.data.reservations.filter(item=>reservationRequestId(item)===requestId);
   const summary=items.map(item=>`${getEquip(item.equip_id)?.name||'Matériel'} × ${item.qty}`).join(', ');
-  if(!confirm(`Supprimer définitivement cette demande de la base ? Matériel concerné : ${summary}.`)) return;
+  if(!confirm(`Supprimer définitivement cette demande (${items.length} ligne(s)) ? Matériel concerné : ${summary}.`)) return;
   const {error}=await db.from('reservations').delete().in('id',items.map(item=>item.id));
   if(error){toast('Erreur : '+error.message,5000);console.error(error);return;}
   state.data.reservations=state.data.reservations.filter(item=>reservationRequestId(item)!==requestId);
   await addHistory('deleted',`Demande de réservation (${summary}) supprimée par ${state.currentUser?.name||'?'}`);
-  renderSidebar(); renderReservations(); toast('Demande supprimée de la base');
+  renderSidebar(); renderPage(state.currentPage); toast('Demande supprimée de la base');
 }
 function showReservDetail(id){
   const r=state.data.reservations.find(r=>r.id===id); if(!r) return;
@@ -422,8 +423,40 @@ function renderAssociations(){
   const counts={}; state.data.reservations.forEach(r=>{counts[r.asso_id]=(counts[r.asso_id]||0)+1;});
   document.getElementById('assos-tbody').innerHTML=state.data.associations.map(a=>{
     const initials=a.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
-    return `<tr><td><div style="display:flex;align-items:center;gap:10px;"><div class="avatar" style="background:${a.color}22;color:${a.color};">${initials}</div><strong>${a.name}</strong></div></td><td>${a.referent}</td><td style="color:var(--info);">${a.email}</td><td>${a.phone}</td><td>${counts[a.id]||0}</td><td><span class="badge ${a.active?'badge-active':'badge-inactive'}">${a.active?'Active':'Suspendue'}</span></td><td><button class="btn btn-sm" onclick="openEditAsso('${a.id}')">Modifier</button> <button class="btn btn-sm" onclick="toggleAsso('${a.id}')">${a.active?'Suspendre':'Réactiver'}</button></td></tr>`;
+    return `<tr><td><div style="display:flex;align-items:center;gap:10px;"><div class="avatar" style="background:${a.color}22;color:${a.color};">${initials}</div><strong>${a.name}</strong></div></td><td>${a.referent}</td><td style="color:var(--info);">${a.email}</td><td>${a.phone}</td><td>${counts[a.id]||0}</td><td><span class="badge ${a.active?'badge-active':'badge-inactive'}">${a.active?'Active':'Suspendue'}</span></td><td><button class="btn btn-sm" onclick="openEditAsso('${a.id}')">Modifier</button> <button class="btn btn-sm" onclick="toggleAsso('${a.id}')">${a.active?'Suspendre':'Réactiver'}</button> <button class="btn btn-sm btn-danger" onclick="deleteAsso('${a.id}')">Supprimer</button></td></tr>`;
   }).join('');
+}
+async function deleteAsso(id){
+  if(!isAdmin()) return;
+  const association=getAsso(id); if(!association) return;
+  const reservationCount=state.data.reservations.filter(r=>r.asso_id===id).length;
+  const ownedEquipment=state.data.equipment.filter(eq=>eq.owner_asso_id===id).length;
+  const linkedUsers=state.data.users.filter(user=>user.asso===id);
+  const effects=[
+    reservationCount?`${reservationCount} réservation(s) associée(s) seront supprimées`:'',
+    ownedEquipment?`${ownedEquipment} équipement(s) resteront dans le stock fédéral`:'',
+    linkedUsers.length?`${linkedUsers.length} compte(s) utilisateur(s) seront dissociés`:'',
+  ].filter(Boolean).join(' ; ');
+  if(!confirm(`Supprimer définitivement l’association « ${association.name} » ?${effects?`\n${effects}.`:''}`)) return;
+  const {error}=await db.from('associations').delete().eq('id',id);
+  if(error){toast('Erreur : '+error.message,5000);console.error(error);return;}
+  let accountsError=null;
+  if(linkedUsers.length){
+    const result=await db.from('users').update({asso:null}).eq('asso',id);
+    accountsError=result.error;
+  }
+  state.data.associations=state.data.associations.filter(a=>a.id!==id);
+  state.data.reservations=state.data.reservations.filter(r=>r.asso_id!==id);
+  state.data.equipment.forEach(eq=>{if(eq.owner_asso_id===id)eq.owner_asso_id=null;});
+  if(!accountsError) state.data.users.forEach(user=>{if(user.asso===id)user.asso=null;});
+  await addHistory('deleted',`Association « ${association.name} » supprimée par ${state.currentUser?.name||'?'}`);
+  if(accountsError){
+    console.error(accountsError);
+    toast(`Association supprimée, mais erreur lors de la dissociation des comptes : ${accountsError.message}`,7000);
+  } else {
+    toast('Association supprimée');
+  }
+  closeModal('modal-asso'); renderSidebar(); renderPage(state.currentPage);
 }
 async function toggleAsso(id){
   const a=getAsso(id); if(!a) return;
@@ -540,6 +573,7 @@ async function submitNewReservation(){
 // ===== ÉQUIPEMENTS =====
 function openAddEquip(){
   document.getElementById('equip-modal-title').textContent='Ajouter un équipement';
+  document.getElementById('equip-delete-btn').style.display='none';
   ['equip-id','equip-name','equip-location','equip-notes'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('equip-cat').value='event'; document.getElementById('equip-total').value=1; document.getElementById('equip-state').value='Bon état';
   const os=document.getElementById('equip-owner'); os.innerHTML='<option value="">— Fédération —</option>'+state.data.associations.map(a=>`<option value="${a.id}">${a.name}</option>`).join(''); os.value='';
@@ -548,6 +582,7 @@ function openAddEquip(){
 function openEditEquip(id){
   const eq=getEquip(id); if(!eq) return;
   document.getElementById('equip-modal-title').textContent='Modifier un équipement';
+  document.getElementById('equip-delete-btn').style.display='';
   document.getElementById('equip-id').value=eq.id; document.getElementById('equip-name').value=eq.name; document.getElementById('equip-cat').value=eq.cat;
   document.getElementById('equip-total').value=eq.total; document.getElementById('equip-state').value=eq.state;
   document.getElementById('equip-location').value=eq.location||''; document.getElementById('equip-notes').value=eq.notes||'';
@@ -562,10 +597,21 @@ async function submitEquip(){
   else { const newEq={id:uid(),...data}; await dbInsert('equipment', newEq); state.data.equipment.push(newEq); await addHistory('stock',`Équipement "${name}" ajouté`); }
   closeModal('modal-equip'); renderStock(); toast('✓ Équipement enregistré');
 }
+async function deleteEquip(id){
+  if(!isAdmin()) return;
+  const equipment=getEquip(id); if(!equipment) return;
+  const reservations=state.data.reservations.filter(r=>r.equip_id===id);
+  if(!confirm(`Supprimer définitivement l’équipement « ${equipment.name} » ?${reservations.length?`\nSes ${reservations.length} ligne(s) de réservation seront également supprimées.`:''}`)) return;
+  const ok=await dbDelete('equipment',id); if(!ok) return;
+  state.data.equipment=state.data.equipment.filter(eq=>eq.id!==id);
+  state.data.reservations=state.data.reservations.filter(r=>r.equip_id!==id);
+  await addHistory('deleted',`Équipement « ${equipment.name} » supprimé par ${state.currentUser?.name||'?'}`);
+  closeModal('modal-equip'); renderSidebar(); renderPage(state.currentPage); toast('Équipement supprimé');
+}
 
 // ===== ASSOCIATIONS MODAL =====
-function openAddAsso(){document.getElementById('asso-modal-title').textContent='Ajouter une association';['asso-id','asso-name','asso-referent','asso-email','asso-phone'].forEach(id=>document.getElementById(id).value='');openModal('modal-asso');}
-function openEditAsso(id){const a=getAsso(id);if(!a)return;document.getElementById('asso-modal-title').textContent='Modifier';document.getElementById('asso-id').value=a.id;document.getElementById('asso-name').value=a.name;document.getElementById('asso-referent').value=a.referent;document.getElementById('asso-email').value=a.email;document.getElementById('asso-phone').value=a.phone;openModal('modal-asso');}
+function openAddAsso(){document.getElementById('asso-modal-title').textContent='Ajouter une association';document.getElementById('asso-delete-btn').style.display='none';['asso-id','asso-name','asso-referent','asso-email','asso-phone'].forEach(id=>document.getElementById(id).value='');openModal('modal-asso');}
+function openEditAsso(id){const a=getAsso(id);if(!a)return;document.getElementById('asso-modal-title').textContent='Modifier';document.getElementById('asso-delete-btn').style.display='';document.getElementById('asso-id').value=a.id;document.getElementById('asso-name').value=a.name;document.getElementById('asso-referent').value=a.referent;document.getElementById('asso-email').value=a.email;document.getElementById('asso-phone').value=a.phone;openModal('modal-asso');}
 async function submitAsso(){
   const id=document.getElementById('asso-id').value,name=document.getElementById('asso-name').value.trim(),referent=document.getElementById('asso-referent').value.trim(),email=document.getElementById('asso-email').value.trim(),phone=document.getElementById('asso-phone').value.trim();
   if(!name||!referent||!email){toast('Nom, référent et email obligatoires.');return;}
