@@ -294,7 +294,7 @@ function calDayClick(d){openNewReservation(d);}
 function renderStock() {
   const f=state.stockFilter, catMap={event:'Événementiel',sport:'Sportif',tech:'Technique'}, catCls={event:'cat-event',sport:'cat-sport',tech:'cat-tech'};
   document.getElementById('stock-date').value=state.stockDate;
-  document.getElementById('stock-tbody').innerHTML=state.data.equipment.filter(eq=>f==='all'||eq.cat===f).map(eq=>{
+  document.getElementById('stock-tbody').innerHTML=state.data.equipment.filter(eq=>f==='all'||eq.cat===f).sort((a,b)=>a.name.localeCompare(b.name,'fr',{sensitivity:'base'})).map(eq=>{
     const avail=computeAvailableForPeriod(eq.id,state.stockDate,state.stockDate), pct=Math.round(avail/eq.total*100);
     const pcls=pct<20?'danger':pct<40?'warn':'', scls=avail===0?'unavailable':pct<30?'low':'available', stxt=avail===0?'Indisponible':pct<30?'Stock bas':'Disponible';
     const owner=eq.owner_asso_id?getAsso(eq.owner_asso_id):null;
@@ -436,7 +436,7 @@ function openNewReservation(dateStr=null, equipId=null){
 function renderAvailableEquipment(preselectedId=null){
   const list=document.getElementById('new-equipment-list');
   const start=document.getElementById('new-start').value,end=document.getElementById('new-end').value;
-  const previous=new Map([...list.querySelectorAll('.reservation-equipment-item')].map(row=>{
+  const previous=new Map([...list.querySelectorAll('tbody .reservation-equipment-item')].map(row=>{
     const checkbox=row.querySelector('input[type="checkbox"]');
     return [checkbox.value,{checked:checkbox.checked,qty:row.querySelector('.reservation-equipment-qty').value}];
   }));
@@ -444,19 +444,26 @@ function renderAvailableEquipment(preselectedId=null){
     list.innerHTML='<div style="padding:12px;color:var(--text3);">Choisissez une période valide pour afficher le matériel disponible.</div>';
     return;
   }
-  const available=state.data.equipment.map(eq=>({eq,qty:computeAvailableForPeriod(eq.id,start,end)}));
-  list.innerHTML=available.map(({eq,qty})=>{
+  const categories={event:'Événementiel',sport:'Sportif',tech:'Technique'};
+  const available=state.data.equipment.map(eq=>({eq,qty:computeAvailableForPeriod(eq.id,start,end)}))
+    .sort((a,b)=>a.eq.name.localeCompare(b.eq.name,'fr',{sensitivity:'base'}));
+  list.innerHTML=available.length?`<div class="table-wrap reservation-equipment-table-wrap"><table class="reservation-equipment-table">
+    <thead><tr><th>Équipement</th><th>Catégorie</th><th>Total</th><th>Disponibilité</th><th>État</th><th>Qté</th><th>Réserver</th></tr></thead>
+    <tbody>${available.map(({eq,qty})=>{
     const owner=eq.owner_asso_id?getAsso(eq.owner_asso_id):null,selection=previous.get(eq.id);
     const selected=qty>0&&(selection?selection.checked:eq.id===preselectedId);
     const amount=qty?Math.min(Math.max(parseInt(selection?.qty||'1',10)||1,1),qty):1;
-    return `<div class="reservation-equipment-item">
-      <label class="reservation-equipment-choice" for="reserve-equip-${eq.id}">
-        <input type="checkbox" id="reserve-equip-${eq.id}" value="${eq.id}" ${selected?'checked':''} ${qty===0?'disabled':''} onchange="updateAvailabilityPreview()">
-        <span><span class="reservation-equipment-name">${eq.name}</span><span class="reservation-equipment-meta">${owner?owner.name:'Matériel fédéral'} · ${qty} disponible(s) sur ${eq.total}</span></span>
-      </label>
-      <input class="reservation-equipment-qty" type="number" min="1" max="${Math.max(qty,1)}" value="${amount}" aria-label="Quantité pour ${eq.name}" ${selected?'':'disabled'}>
-    </div>`;
-  }).join('')||'<div style="padding:12px;color:var(--text3);">Aucun matériel disponible sur cette période.</div>';
+    const pct=eq.total?Math.round(qty/eq.total*100):0;
+    const progressClass=pct<20?'danger':pct<40?'warn':'';
+    return `<tr class="reservation-equipment-item">
+      <td><strong>${eq.name}</strong><div class="reservation-equipment-meta">${owner?owner.name:'Matériel fédéral'}</div></td>
+      <td>${categories[eq.cat]||eq.cat}</td><td>${eq.total}</td>
+      <td><div class="progress-wrap"><span>${qty}</span><div class="progress-bar"><div class="progress-fill ${progressClass}" style="width:${pct}%"></div></div><span class="progress-num">${pct}%</span></div></td>
+      <td>${eq.state||'—'}</td>
+      <td><input class="reservation-equipment-qty" type="number" min="1" max="${Math.max(qty,1)}" value="${amount}" aria-label="Quantité pour ${eq.name}" ${selected?'':'disabled'}></td>
+      <td><input type="checkbox" id="reserve-equip-${eq.id}" value="${eq.id}" aria-label="Réserver ${eq.name}" ${selected?'checked':''} ${qty===0?'disabled':''} onchange="updateAvailabilityPreview()"></td>
+    </tr>`;
+  }).join('')}</tbody></table></div>`:'<div style="padding:12px;color:var(--text3);">Aucun matériel en stock.</div>';
 }
 function updateAvailabilityPreview(){
   const start=document.getElementById('new-start').value,end=document.getElementById('new-end').value,el=document.getElementById('avail-preview');
