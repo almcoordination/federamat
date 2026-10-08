@@ -24,6 +24,7 @@
     /* Bouton danger */
     .btn-danger{background:var(--danger,#ef4444)!important;color:#fff!important;border-color:var(--danger,#ef4444)!important;}
     .btn-danger:hover{opacity:.85;}
+    .visually-hidden{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;}
   </style>
 </head>
 <body>
@@ -60,7 +61,22 @@
 
   <aside class="sidebar">
     <div class="sidebar-brand">
-      <img class="brand-logo brand-logo-sidebar" src="ChatGPT Image 3 août 2026, 17_01_25.png" alt="A.L.M. Association de Londinières">
+      <div class="sidebar-brand-head">
+        <img class="brand-logo brand-logo-sidebar" src="ChatGPT Image 3 août 2026, 17_01_25.png" alt="A.L.M. Association de Londinières">
+        <label class="visually-hidden" for="association-banner-color">Couleur du bandeau</label>
+        <select class="association-banner-picker" id="association-banner-color" aria-label="Choisir la couleur du bandeau" onchange="changeAssociationBannerColor(this.value)" style="display:none;">
+          <option value="#ffffff">Blanc</option>
+          <option value="#2563eb">Bleu</option>
+          <option value="#eab308">Jaune</option>
+          <option value="#dc2626">Rouge</option>
+          <option value="#16a34a">Vert</option>
+          <option value="#f97316">Orange</option>
+          <option value="#8b5cf6">Violet</option>
+          <option value="#92400e">Marron</option>
+          <option value="#000000">Noir</option>
+          <option value="#ec4899">Rose</option>
+        </select>
+      </div>
       <div class="sidebar-tagline">Gestion mutualisée du matériel</div>
     </div>
     <div class="nav-section">
@@ -101,6 +117,7 @@
 
   <main class="main">
     <div class="topbar">
+      <div class="topbar-color-band" id="topbar-color-band" aria-hidden="true"></div>
       <span class="topbar-title" id="topbar-title">Tableau de bord</span>
       <div class="topbar-user-asso" id="topbar-user-asso" style="display:none;"></div>
       <div class="topbar-actions">

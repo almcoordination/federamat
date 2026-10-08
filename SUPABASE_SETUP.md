@@ -57,7 +57,7 @@ create table if not exists associations (
   email text,
   phone text,
   active boolean default true,
-  color text default '#1D9E75',
+  color text default '#ffffff',
   logo text
 );
 
@@ -115,6 +115,8 @@ alter table associations add column if not exists logo text;
 ```
 
 Dans la gestion d’une association, l’administrateur peut coller une image Base64 brute ou un data URL JPEG, PNG, GIF ou WebP. L’application valide l’image et enregistre sa représentation Base64 dans `associations.logo`.
+
+Les membres d’une association peuvent choisir une couleur de bandeau parmi blanc (par défaut), bleu, jaune, rouge, vert, orange, violet, marron, noir et rose. Le choix est partagé par tous les comptes de cette association dans la colonne `associations.color`.
 
 ## 4. Configurer les permissions (RLS)
 

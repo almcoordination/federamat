@@ -7,6 +7,7 @@ const SUPABASE_ANON_KEY = 'sb_publishable_B-InHQUBKsYAE9m6Psslgg_56gzi384';  // 
 const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 let pendingAssociationLogo = null;
 let removeAssociationLogo = false;
+const associationBannerColors = ['#ffffff','#2563eb','#eab308','#dc2626','#16a34a','#f97316','#8b5cf6','#92400e','#000000','#ec4899'];
 
 // ===== STATE =====
 let state = {
@@ -147,6 +148,46 @@ function tryAutoLogin() {
 function logout() { state.currentUser = null; sessionStorage.removeItem('federamat_user'); showLogin(); }
 function isAdmin() { return state.currentUser?.role === 'admin'; }
 function currentAsso() { return state.currentUser?.asso ? state.data.associations.find(a => a.id === state.currentUser.asso) : null; }
+function associationBannerColor(association) {
+  return associationBannerColors.includes(association?.color) ? association.color : '#ffffff';
+}
+function updateTopbarBanner() {
+  const topbar=document.querySelector('.topbar');
+  const band=document.getElementById('topbar-color-band');
+  const title=document.getElementById('topbar-title');
+  if(!topbar||!band||!title) return;
+  const topbarRect=topbar.getBoundingClientRect();
+  const titleRect=title.getBoundingClientRect();
+  const logo=document.querySelector('#topbar-user-asso .asso-brand-mark, #topbar-user-asso .asso-brand-placeholder');
+  const associationIdentity=document.getElementById('topbar-user-asso');
+  const endElement=logo||((associationIdentity?.style.display!=='none'&&associationIdentity?.innerHTML)?associationIdentity:document.querySelector('.topbar-actions'));
+  const endRect=endElement?.getBoundingClientRect();
+  const left=Math.max(0,titleRect.left-topbarRect.left-10);
+  const right=endRect?Math.max(14,topbarRect.right-endRect.left+8):14;
+  band.style.left=`${left}px`;
+  band.style.right=`${right}px`;
+  band.style.background=isAdmin()
+    ?'linear-gradient(90deg, #0057bf 0 33.333%, #659f04 33.333% 66.666%, #f66a03 66.666% 100%)'
+    :associationBannerColor(currentAsso());
+}
+async function changeAssociationBannerColor(color) {
+  const picker=document.getElementById('association-banner-color');
+  const association=currentAsso();
+  if(isAdmin()||!association||!associationBannerColors.includes(color)) {
+    if(picker) picker.value=associationBannerColor(association);
+    return;
+  }
+  const previousColor=associationBannerColor(association);
+  const updated=await dbUpdate('associations',association.id,{color});
+  if(!updated) {
+    picker.value=previousColor;
+    updateTopbarBanner();
+    return;
+  }
+  association.color=color;
+  updateTopbarBanner();
+  toast('✓ Couleur du bandeau enregistrée');
+}
 
 // ===== DISPONIBILITÉ =====
 function computeAvailable(equipId, excludeId=null) {
@@ -219,6 +260,10 @@ function renderSidebar() {
   const topbarAsso=document.getElementById('topbar-user-asso');
   topbarAsso.innerHTML=asso?associationIdentity(asso,26):'';
   topbarAsso.style.display=asso?'':'none';
+  const bannerPicker=document.getElementById('association-banner-color');
+  bannerPicker.style.display=!isAdmin()&&asso?'':'none';
+  bannerPicker.value=associationBannerColor(asso);
+  updateTopbarBanner();
   document.querySelectorAll('.admin-only').forEach(el=>el.style.display=isAdmin()?'':'none');
   const pending=groupReservationRequests(state.data.reservations.filter(r=>['pending','under_review'].includes(r.status))).length;
   const badge=document.getElementById('badge-approvals');
@@ -726,7 +771,6 @@ async function selectAssociationLogo(value){
 async function submitAsso(){
   const id=document.getElementById('asso-id').value,name=document.getElementById('asso-name').value.trim(),referent=document.getElementById('asso-referent').value.trim(),email=document.getElementById('asso-email').value.trim(),phone=document.getElementById('asso-phone').value.trim();
   if(!name||!referent||!email){toast('Nom, référent et email obligatoires.');return;}
-  const colors=['#1D9E75','#185FA5','#534AB7','#BA7517','#D85A30','#3B6D11','#993556','#888780'];
   const updates={name,referent,email,phone};
   if(isAdmin()&&(pendingAssociationLogo||removeAssociationLogo)) updates.logo=removeAssociationLogo?null:pendingAssociationLogo;
   if(id){
@@ -739,7 +783,7 @@ async function submitAsso(){
     Object.assign(getAsso(id),updates);
     sortAssociations();
   }else{
-    const newAsso={id:uid(),name,referent,email,phone,active:true,color:colors[state.data.associations.length%colors.length]};
+    const newAsso={id:uid(),name,referent,email,phone,active:true,color:'#ffffff'};
     if(isAdmin()&&pendingAssociationLogo) newAsso.logo=pendingAssociationLogo;
     const {error}=await db.from('associations').insert(newAsso);
     if(error){
@@ -886,6 +930,7 @@ async function loginSubmit(){
 
 // ===== INIT =====
 document.addEventListener('DOMContentLoaded', async () => {
+  window.addEventListener('resize',updateTopbarBanner);
   document.getElementById('login-pass').addEventListener('keydown',e=>{if(e.key==='Enter')loginSubmit();});
   document.getElementById('login-user').addEventListener('keydown',e=>{if(e.key==='Enter')loginSubmit();});
   const loaded = await loadData();
