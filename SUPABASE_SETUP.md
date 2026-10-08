@@ -179,4 +179,4 @@ Ouvrez `index.html` dans votre navigateur (ou hébergez les fichiers sur un serv
 - En cas d'approbation, chaque association propriétaire reçoit uniquement la liste du matériel qu'elle doit prêter.
 - Pour une base existante, appliquez la migration `request_id` et `location` décrite à l'étape 3.
 - La fonction Netlify d'envoi d'emails nécessite `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `GMAIL_USER` et `GMAIL_APP_PASSWORD` dans les variables d'environnement Netlify.
-- La rubrique **Message collectif** envoie l’objet et le texte saisis par l’administrateur aux adresses des associations actives, en copie cachée. La fonction `send-broadcast-email` vérifie côté serveur que l’identifiant et le mot de passe correspondent à un compte administrateur.
+- La rubrique **Message collectif** ouvre un brouillon Gmail avec l’objet, le texte et les adresses des associations actives en copie cachée. L’administrateur doit vérifier le brouillon et l’envoyer manuellement ; cette fonction marche sur GitHub Pages sans Netlify.

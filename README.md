@@ -27,17 +27,13 @@ Uploadez tous les fichiers sur votre hébergeur (OVH, Infomaniak, etc.) ou dépl
 - **Vercel** : `vercel --prod`
 - **GitHub Pages** : push le dossier, activez Pages dans les paramètres
 
-### Déploiement Netlify recommandé
+### Emails automatiques de réservation (Netlify)
 
-1. Connectez le dépôt GitHub à Netlify pour que le dossier `netlify/functions` soit déployé avec le site. Le glisser-déposer statique ne publie pas les fonctions serveur.
-2. Dans les paramètres du site Netlify, ajoutez `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `GMAIL_USER` et `GMAIL_APP_PASSWORD` comme variables d'environnement.
-3. Pour créer le mot de passe d'application Google, activez d'abord la validation en deux étapes, puis ouvrez https://myaccount.google.com/apppasswords et créez un mot de passe nommé `FédéraMat`. Vérifiez aussi que les règles RLS du fichier `SUPABASE_SETUP.md` sont bien exécutées sur les six tables.
-4. Testez une nouvelle réservation, puis son approbation ou son refus : les emails automatiques partent depuis l'adresse Gmail configurée dans Netlify, sans ouvrir de logiciel de messagerie.
-5. Aucun build command ni dossier `dist` n'est nécessaire.
+Les notifications automatiques liées aux réservations utilisent la fonction serveur Netlify. Elles nécessitent de déployer `netlify/functions` avec Netlify et de configurer `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `GMAIL_USER` et `GMAIL_APP_PASSWORD` dans les variables d'environnement Netlify. Elles ne sont pas disponibles quand le site est hébergé uniquement sur GitHub Pages.
 
-Dans l’administration, la rubrique **Message collectif** permet d’envoyer un objet et un texte aux adresses e-mail des associations actives. Les destinataires sont placés en copie cachée. L’envoi nécessite aussi le déploiement de la fonction Netlify `send-broadcast-email`.
+Dans l’administration, la rubrique **Message collectif** ouvre un brouillon Gmail prérempli avec l’objet, le texte et les adresses des associations actives en copie cachée. L’administrateur vérifie le brouillon puis l’envoie manuellement. Cette fonction est compatible avec GitHub Pages et ne nécessite pas de backend.
 
-`GMAIL_USER` est l'adresse Gmail qui apparaîtra comme expéditeur. `GMAIL_APP_PASSWORD` est le mot de passe d'application Google, pas le mot de passe habituel du compte. `SUPABASE_SERVICE_ROLE_KEY` et `GMAIL_APP_PASSWORD` sont des secrets : configurez-les uniquement dans Netlify, jamais dans le code du navigateur.
+Pour les notifications automatiques Netlify, `GMAIL_USER` est l'adresse Gmail expéditrice et `GMAIL_APP_PASSWORD` son mot de passe d'application (pas le mot de passe habituel). `SUPABASE_SERVICE_ROLE_KEY` et `GMAIL_APP_PASSWORD` sont des secrets à configurer uniquement dans Netlify, jamais dans le code du navigateur.
 
 Si l'application affiche une erreur de connexion, ouvrez la console du navigateur (`F12`) : le message Supabase indique maintenant la table ou la permission en cause. Vérifiez aussi que l'URL du projet et la clé publique dans `js/app.js` correspondent au même projet.
 
@@ -70,7 +66,7 @@ Si l'application affiche une erreur de connexion, ouvrez la console du navigateu
 - **Réservations** : historique global avec filtres par statut
 - **Validations** : approbation/refus des demandes avec détection de conflits
 - **Associations** : gestion des membres (ajout, modification, suspension)
-- **Message collectif** : envoi d’un email aux associations actives ayant une adresse renseignée
+- **Message collectif** : préparation d’un brouillon Gmail adressé en copie cachée aux associations actives
 - **Historique** : journal complet de toutes les activités
 
 ### 🏢 Association membre

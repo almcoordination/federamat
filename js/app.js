@@ -223,25 +223,27 @@ async function notifyReservation(requestId, status, note='', reservationId=null)
 }
 
 function broadcastRecipients() {
-  const recipients = new Set(state.data.associations
+  const recipients = new Map(state.data.associations
     .filter(association => association.active && typeof association.email === 'string' && association.email.trim())
-    .map(association => association.email.trim().toLowerCase()));
-  return recipients.size;
+    .map(association => association.email.trim())
+    .map(email => [email.toLowerCase(), email]));
+  return [...recipients.values()];
 }
 function renderBroadcast() {
-  const count = broadcastRecipients();
+  const count = broadcastRecipients().length;
   document.getElementById('broadcast-recipient-count').textContent =
     `${count} destinataire${count > 1 ? 's' : ''} (associations actives avec une adresse e-mail)`;
   document.getElementById('broadcast-send-button').disabled = count === 0;
 }
-async function submitBroadcastEmail() {
+function submitBroadcastEmail() {
   if (!isAdmin()) {
     toast('Accès réservé à l’administrateur.');
     return;
   }
   const subject = document.getElementById('broadcast-subject').value.trim();
   const message = document.getElementById('broadcast-message').value.trim();
-  const recipientCount = broadcastRecipients();
+  const recipients = broadcastRecipients();
+  const recipientCount = recipients.length;
   if (!subject || !message) {
     toast('Veuillez renseigner l’objet et le message.');
     return;
@@ -250,38 +252,27 @@ async function submitBroadcastEmail() {
     toast('Aucune association active ne dispose d’une adresse e-mail.');
     return;
   }
-  if (!window.confirm(`Envoyer ce message à ${recipientCount} destinataire${recipientCount > 1 ? 's' : ''} ?`)) return;
+  if (!window.confirm(`Ouvrir un brouillon Gmail avec ${recipientCount} destinataire${recipientCount > 1 ? 's' : ''} en copie cachée ?`)) return;
 
-  const button = document.getElementById('broadcast-send-button');
-  button.disabled = true;
-  try {
-    const response = await fetch('/.netlify/functions/send-broadcast-email', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        adminId: state.currentUser.id,
-        password: state.currentUser.password,
-        subject,
-        message,
-      }),
-    });
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.error || `Erreur de la fonction email (${response.status})`);
-    document.getElementById('broadcast-subject').value = '';
-    document.getElementById('broadcast-message').value = '';
-    const rejectedCount = result.rejectedCount || 0;
-    toast(
-      rejectedCount
-        ? `⚠️ Message accepté pour ${result.recipientCount} destinataire${result.recipientCount > 1 ? 's' : ''} ; ${rejectedCount} adresse${rejectedCount > 1 ? 's' : ''} refusée${rejectedCount > 1 ? 's' : ''}.`
-        : `✓ Message envoyé à ${result.recipientCount} destinataire${result.recipientCount > 1 ? 's' : ''}.`,
-      7000,
-    );
-  } catch (error) {
-    console.error('Envoi du message collectif :', error);
-    toast(`Échec de l’envoi : ${error.message}`, 7000);
-  } finally {
-    button.disabled = broadcastRecipients() === 0;
+  const composeUrl = new URL('https://mail.google.com/mail/');
+  composeUrl.searchParams.set('view', 'cm');
+  composeUrl.searchParams.set('fs', '1');
+  composeUrl.searchParams.set('bcc', recipients.join(','));
+  composeUrl.searchParams.set('su', `[FédéraMat] ${subject}`);
+  composeUrl.searchParams.set('body', message);
+  if (composeUrl.href.length > 8000) {
+    toast('Le brouillon est trop long pour être ouvert dans Gmail. Réduisez le texte ou le nombre de destinataires.');
+    return;
   }
+  const composeWindow = window.open(composeUrl.href, '_blank');
+  if (!composeWindow) {
+    toast('La fenêtre Gmail a été bloquée. Autorisez les fenêtres pop-up pour ce site puis réessayez.');
+    return;
+  }
+  composeWindow.opener = null;
+  document.getElementById('broadcast-subject').value = '';
+  document.getElementById('broadcast-message').value = '';
+  toast('✓ Brouillon ouvert dans Gmail. Vérifiez-le puis cliquez sur « Envoyer ».', 6000);
 }
 
 // ===== NAVIGATION =====

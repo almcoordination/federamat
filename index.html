@@ -226,8 +226,8 @@
       <!-- MESSAGE COLLECTIF -->
       <div id="page-broadcast" class="page admin-only">
         <div class="card">
-          <div class="card-header"><div class="card-title">✉️ Envoyer un message collectif</div></div>
-          <p style="font-size:13px;color:var(--text2);margin-bottom:16px;">Le message sera envoyé aux adresses e-mail des associations actives, en copie cachée.</p>
+          <div class="card-header"><div class="card-title">✉️ Préparer un message collectif</div></div>
+          <p style="font-size:13px;color:var(--text2);margin-bottom:16px;">Un brouillon Gmail s’ouvrira avec les associations actives en copie cachée. Vérifiez le message puis cliquez sur « Envoyer » dans Gmail.</p>
           <div class="form-group">
             <label class="form-label" for="broadcast-subject">Objet *</label>
             <input type="text" class="form-control" id="broadcast-subject" maxlength="180" placeholder="Objet de votre message">
@@ -238,7 +238,7 @@
           </div>
           <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
             <span id="broadcast-recipient-count" style="font-size:12px;color:var(--text3);"></span>
-            <button class="btn btn-primary" id="broadcast-send-button" onclick="submitBroadcastEmail()">Envoyer à toutes les associations</button>
+            <button class="btn btn-primary" id="broadcast-send-button" onclick="submitBroadcastEmail()">Préparer dans Gmail</button>
           </div>
         </div>
       </div>
