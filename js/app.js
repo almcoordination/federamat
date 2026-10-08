@@ -25,7 +25,7 @@ function getAsso(id)  { return state.data.associations.find(a => a.id === id); }
 function associationMark(association, size=32) {
   const logo=association?.logo;
   const style=`width:${size}px;height:${size}px;`;
-  if(typeof logo==='string'&&/^data:image\x2fjpeg;base64,[A-Za-z0-9+/]+=*$/.test(logo)){
+  if(typeof logo==='string'&&/^data:image\/(?:jpeg|png|gif|webp);base64,[A-Za-z0-9+/]+=*$/i.test(logo)){
     return `<img class="asso-brand-mark" style="${style}" src="${logo}" alt="">`;
   }
   return `<span class="asso-brand-placeholder" style="${style}" aria-hidden="true"></span>`;
@@ -669,7 +669,7 @@ function openEditAsso(id){
 function resetAssociationLogoForm(association){
   pendingAssociationLogo=null;
   removeAssociationLogo=false;
-  document.getElementById('asso-logo-file').value='';
+  document.getElementById('asso-logo-base64').value='';
   document.getElementById('asso-logo-remove').checked=false;
   document.getElementById('asso-logo-remove-wrap').style.display=association?.logo?'':'none';
   document.getElementById('asso-logo-preview').innerHTML=associationMark(association,56);
@@ -683,39 +683,40 @@ function toggleAssociationLogoRemoval(remove){
     {logo:remove?null:(pendingAssociationLogo||association?.logo)},56
   );
 }
-async function selectAssociationLogo(file){
-  if(!isAdmin()||!file) return;
-  const input=document.getElementById('asso-logo-file');
+async function selectAssociationLogo(value){
+  if(!isAdmin()) return;
+  const input=document.getElementById('asso-logo-base64');
   try{
-    if(file.size>5*1024*1024) throw new Error('Le fichier JPEG doit faire 5 Mo maximum.');
-    const signature=new Uint8Array(await file.slice(0,3).arrayBuffer());
-    if(signature[0]!==0xff||signature[1]!==0xd8||signature[2]!==0xff){
-      throw new Error('Veuillez choisir une image au format JPEG.');
+    const inputValue=String(value||'').trim();
+    if(!inputValue) throw new Error('Collez le Base64 du logo avant de le prévisualiser.');
+    const dataUrlMatch=inputValue.match(/^data:image\/(jpeg|png|gif|webp);base64,([\s\S]+)$/i);
+    const payload=(dataUrlMatch?dataUrlMatch[2]:inputValue).replace(/\s/g,'');
+    if(payload.length>Math.ceil(5*1024*1024*4/3)+4) throw new Error('Le logo Base64 dépasse la taille maximale de 5 Mo.');
+    if(!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(payload)){
+      throw new Error('Le texte collé n’est pas un Base64 valide.');
     }
-    const image=await createImageBitmap(file);
-    const scale=Math.min(1,512/Math.max(image.width,image.height));
-    const canvas=document.createElement('canvas');
-    canvas.width=Math.max(1,Math.round(image.width*scale));
-    canvas.height=Math.max(1,Math.round(image.height*scale));
-    canvas.getContext('2d').drawImage(image,0,0,canvas.width,canvas.height);
+    const binary=atob(payload);
+    if(binary.length>5*1024*1024) throw new Error('Le logo Base64 dépasse la taille maximale de 5 Mo.');
+    const bytes=Uint8Array.from(binary,char=>char.charCodeAt(0));
+    const isJpeg=bytes[0]===0xff&&bytes[1]===0xd8&&bytes[2]===0xff;
+    const isPng=bytes[0]===0x89&&bytes[1]===0x50&&bytes[2]===0x4e&&bytes[3]===0x47&&bytes[4]===0x0d&&bytes[5]===0x0a&&bytes[6]===0x1a&&bytes[7]===0x0a;
+    const isGif=String.fromCharCode(...bytes.slice(0,6))==='GIF87a'||String.fromCharCode(...bytes.slice(0,6))==='GIF89a';
+    const isWebp=String.fromCharCode(...bytes.slice(0,4))==='RIFF'&&String.fromCharCode(...bytes.slice(8,12))==='WEBP';
+    const detectedType=isJpeg?'jpeg':isPng?'png':isGif?'gif':isWebp?'webp':null;
+    if(!detectedType) throw new Error('Le Base64 doit contenir une image JPEG, PNG, GIF ou WebP.');
+    if(dataUrlMatch&&dataUrlMatch[1].toLowerCase()!==detectedType){
+      throw new Error('Le format déclaré dans le data URL ne correspond pas à l’image.');
+    }
+    const logo=`data:image/${detectedType};base64,${payload}`;
+    const image=await createImageBitmap(new Blob([bytes],{type:`image/${detectedType}`}));
     image.close();
-    const jpeg=await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',0.82));
-    if(!jpeg) throw new Error('Impossible de traiter cette image JPEG.');
-    const logo=await new Promise((resolve,reject)=>{
-      const reader=new FileReader();
-      reader.onload=()=>resolve(reader.result);
-      reader.onerror=()=>reject(new Error('Impossible de lire cette image JPEG.'));
-      reader.readAsDataURL(jpeg);
-    });
     pendingAssociationLogo=logo;
     removeAssociationLogo=false;
     document.getElementById('asso-logo-remove').checked=false;
     document.getElementById('asso-logo-preview').innerHTML=associationMark({logo},56);
   }catch(error){
     console.error('Logo association :',error);
-    toast(error.message||'Impossible de charger ce logo JPEG.',5000);
-  }finally{
-    input.value='';
+    toast(error.message||'Impossible de lire ce logo Base64.',5000);
   }
 }
 async function submitAsso(){

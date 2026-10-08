@@ -314,8 +314,10 @@
       <div class="form-group"><label class="form-label">Téléphone</label><input type="tel" class="form-control" id="asso-phone" placeholder="06 XX XX XX XX"></div>
     </div>
     <div class="form-group admin-only" id="asso-logo-controls" style="display:none;">
-      <label class="form-label" for="asso-logo-file">Logo de l’association (JPEG)</label>
-      <input type="file" class="form-control" id="asso-logo-file" accept=".jpg,.jpeg,image/jpeg" onchange="selectAssociationLogo(this.files[0])">
+      <label class="form-label" for="asso-logo-base64">Logo de l’association (Base64)</label>
+      <textarea class="form-control" id="asso-logo-base64" rows="3" placeholder="Collez le Base64 de l’image ou son data URL…" autocomplete="off" spellcheck="false"></textarea>
+      <button type="button" class="btn btn-sm" style="margin-top:8px;" onclick="selectAssociationLogo(document.getElementById('asso-logo-base64').value)">Prévisualiser le logo</button>
+      <div class="form-hint">Formats acceptés : JPEG, PNG, GIF ou WebP ; Base64 brut ou data URL. Taille maximale : 5 Mo.</div>
       <div id="asso-logo-preview" class="asso-logo-preview"></div>
       <label id="asso-logo-remove-wrap" style="display:none;margin-top:8px;font-size:12px;color:var(--text2);">
         <input type="checkbox" id="asso-logo-remove" onchange="toggleAssociationLogoRemoval(this.checked)">

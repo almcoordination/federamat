@@ -108,11 +108,13 @@ alter table reservations add column if not exists location text;
 create index if not exists reservations_request_id_idx on reservations(request_id);
 ```
 
-Pour activer le téléversement des logos d’association sur une base existante, exécutez aussi :
+Pour activer l’enregistrement des logos Base64 sur une base existante, exécutez aussi :
 
 ```sql
 alter table associations add column if not exists logo text;
 ```
+
+Dans la gestion d’une association, l’administrateur peut coller une image Base64 brute ou un data URL JPEG, PNG, GIF ou WebP. L’application valide l’image et enregistre sa représentation Base64 dans `associations.logo`.
 
 ## 4. Configurer les permissions (RLS)
 
