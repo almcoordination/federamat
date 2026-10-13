@@ -290,19 +290,22 @@ function reservationEmailDrafts(requestId, status, note='', reservationId=null) 
       '',
       `Association demandeuse : ${requester?.name || 'Non renseignée'}`,
       `Du : ${fmtDate(first.date_start)} au ${fmtDate(first.date_end)}`,
+      '',
       `Lieu : ${first.location || 'Non renseigné'}`,
       `Motif : ${first.reason || 'Non renseigné'}`,
       '',
       'Matériel concerné :',
       ...equipmentLines,
-      note ? `${status === 'rejected' ? 'Motif du refus' : 'Message'} : ${note}` : '',
+      '',
+      note ? `${status === 'rejected' ? 'Motif du refus' : 'Message'} : ${note}` : null,
       status === 'under_review'
         ? '𝗠𝗲𝗿𝗰𝗶 𝗱𝗲 𝗰𝗼𝗻𝗳𝗶𝗿𝗺𝗲𝗿 𝗿𝗮𝗽𝗶𝗱𝗲𝗺𝗲𝗻𝘁 𝗹𝗮 𝗱𝗶𝘀𝗽𝗼𝗻𝗶𝗯𝗶𝗹𝗶𝘁𝗲́ 𝗱𝘂 𝗺𝗮𝘁𝗲́𝗿𝗶𝗲𝗹 𝗱𝗲𝗺𝗮𝗻𝗱𝗲́'
-        : '',
+        : null,
       '',
       'Cordialement,',
       'Stéphanie',
-    ].filter(Boolean).join('\n');
+      "Présidente d'ALM",
+    ].filter(line => line !== null).join('\n');
     const subject = status === 'under_review'
       ? `Demande à examiner — ${requester?.name || 'Association'}`
       : status === 'approved'
