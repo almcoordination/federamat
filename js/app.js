@@ -212,7 +212,7 @@ function gmailComposeUrl({ to, bcc, subject, body }) {
   composeUrl.searchParams.set('fs', '1');
   if (to) composeUrl.searchParams.set('to', to);
   if (bcc) composeUrl.searchParams.set('bcc', bcc);
-  composeUrl.searchParams.set('su', subject);
+  composeUrl.searchParams.set('su', subject.replace(/^\s*\[F[eé]d[eé]raMat\]\s*/i, ''));
   composeUrl.searchParams.set('body', body);
   return composeUrl.href.length <= 8000 ? composeUrl.href : null;
 }
@@ -220,6 +220,7 @@ function gmailComposeUrl({ to, bcc, subject, body }) {
 function reservationEmailDrafts(requestId, status, note='', reservationId=null) {
   const reservations = state.data.reservations
     .filter(reservation => reservationRequestId(reservation) === requestId)
+    .filter(reservation => status !== 'under_review' || reservation.status === 'under_review')
     .filter(reservation => !reservationId || reservation.id === reservationId);
   if (!reservations.length || !['under_review','approved','rejected'].includes(status)) {
     return { drafts: [], reason: 'no-recipient' };
@@ -457,12 +458,10 @@ function renderDashboard() {
   if (isAdmin()) {
     dashAdmin.style.display='';
     document.getElementById('dash-pending').innerHTML=pending.slice(0,3).map(request=>{
-      const first=request.reservations[0],as=getAsso(first.asso_id);
+      const first=request.reservations.find(r=>r.status==='pending')||request.reservations.find(r=>r.status==='under_review')||request.reservations[0],as=getAsso(first.asso_id);
       const summary=request.reservations.map(r=>`${getEquip(r.equip_id)?.name||'?'} × ${r.qty}`).join(', ');
       const status=first.status;
-      const action=status==='pending'
-        ?`<button class="btn btn-primary btn-sm" onclick="markReservationUnderReview('${request.id}')">Examiner la demande</button>`
-        :`<button class="btn btn-primary btn-sm" onclick="navigate('approvals')">Poursuivre l’examen</button>`;
+      const action=`<button class="btn btn-primary btn-sm" onclick="markReservationUnderReview('${request.id}')">${status==='pending'?'Examiner la demande':'Renvoyer l’email d’examen'}</button>`;
       return `<div class="approval-card" style="padding:12px;"><div class="approval-header"><div><div class="approval-title" style="font-size:13px;">${summary}</div><div class="approval-meta">${associationIdentity(as,22)} · ${fmtDate(first.date_start)}→${fmtDate(first.date_end)}</div></div><span class="badge badge-${status}">${statusLabel(status)}</span></div><div class="approval-actions">${action}<button class="btn btn-sm" onclick="navigate('approvals')">Détails</button></div></div>`;
     }).join('')||'<div style="padding:16px;text-align:center;color:var(--text3);font-size:13px;">✓ Aucune demande à traiter</div>';
   } else { dashAdmin.style.display='none'; }
@@ -480,18 +479,21 @@ function groupReservationRequests(reservations){
 }
 
 async function markReservationUnderReview(requestId){
-  const reservations=state.data.reservations.filter(r=>reservationRequestId(r)===requestId&&r.status==='pending');
+  const reservations=state.data.reservations.filter(r=>reservationRequestId(r)===requestId&&['pending','under_review'].includes(r.status));
   if(!isAdmin()||!reservations.length) return;
   const note=document.getElementById('note-'+requestId)?.value||'';
-  const ids=reservations.map(r=>r.id);
-  const {error}=await db.from('reservations').update({status:'under_review'}).in('id',ids);
-  if(error){toast('Erreur : '+error.message,5000);console.error(error);return;}
-  reservations.forEach(r=>{r.status='under_review';});
-  const requester=getAsso(reservations[0].asso_id)?.name||'Association';
-  await addHistory('under_review',`Demande de ${reservations.length} matériel(aux) (${requester}) mise en cours d’examen`);
+  const pending=reservations.filter(r=>r.status==='pending');
+  if(pending.length){
+    const ids=pending.map(r=>r.id);
+    const {error}=await db.from('reservations').update({status:'under_review'}).in('id',ids);
+    if(error){toast('Erreur : '+error.message,5000);console.error(error);return;}
+    pending.forEach(r=>{r.status='under_review';});
+    const requester=getAsso(pending[0].asso_id)?.name||'Association';
+    await addHistory('under_review',`Demande de ${pending.length} matériel(aux) (${requester}) mise en cours d’examen`);
+  }
   renderSidebar(); renderPage(state.currentPage);
   const drafts=reservationEmailDrafts(requestId,'under_review',note);
-  showReservationEmailDrafts(drafts,'Demande mise en cours d’examen');
+  showReservationEmailDrafts(drafts,pending.length?'Demande mise en cours d’examen':'Nouvel email d’examen préparé');
 }
 // ===== CALENDAR =====
 function renderCalendar() {
@@ -626,7 +628,7 @@ function renderApprovals(){
         <input type="text" class="form-control" id="note-${request.id}" placeholder="Précision pour le demandeur ou les prêteurs">
       </div>
       <div class="approval-actions">
-        ${reservations.some(r=>r.status==='pending')?`<button class="btn btn-primary btn-sm" onclick="markReservationUnderReview('${request.id}')">Examiner la demande</button>`:''}
+        ${reservations.some(r=>['pending','under_review'].includes(r.status))?`<button class="btn btn-primary btn-sm" onclick="markReservationUnderReview('${request.id}')">${reservations.some(r=>r.status==='pending')?'Examiner la demande':'Renvoyer l’email d’examen'}</button>`:''}
       </div>
     </div>`;
   }).join('')||`<div style="text-align:center;padding:48px;color:var(--text3);"><div style="font-size:36px;margin-bottom:12px;">✅</div><div>Aucune validation en attente</div></div>`;
@@ -782,6 +784,10 @@ function updateAvailabilityPreview(){
     el.textContent=available?`${available} équipement${available>1?'s':''} disponible${available>1?'s':''} parmi ${rows.length} en stock.`:'Aucun équipement disponible sur cette période.';
     el.style.display='';
   }
+}
+function onNewReservationStartChange(){
+  document.getElementById('new-end').value=document.getElementById('new-start').value;
+  updateAvailabilityPreview();
 }
 async function submitNewReservation(){
   const assoId=isAdmin()?document.getElementById('new-asso').value:state.currentUser.asso;
