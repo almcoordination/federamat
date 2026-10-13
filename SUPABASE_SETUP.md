@@ -177,4 +177,4 @@ Ouvrez `index.html` dans votre navigateur (ou hébergez les fichiers sur un serv
 - L'administrateur approuve ou refuse la demande complète en une seule fois.
 - Lors du passage en examen ou d'une décision, l’application propose des brouillons Gmail adaptés aux destinataires. À l’approbation, un brouillon est proposé d’abord au demandeur puis un autre à l’association propriétaire du matériel ; en cas de refus, le brouillon est adressé au demandeur. L’administrateur doit ouvrir et envoyer chaque brouillon manuellement.
 - Pour une base existante, appliquez la migration `request_id` et `location` décrite à l'étape 3.
-- La rubrique **Message collectif** ouvre un brouillon Gmail avec l’objet, le texte et les adresses des associations actives en copie cachée. Toutes les notifications email sont préparées dans Gmail et nécessitent un envoi manuel ; elles fonctionnent sur GitHub Pages sans Netlify.
+- La rubrique **Message collectif** ouvre un brouillon Gmail avec l’objet, le texte et les adresses des associations actives en copie cachée. Toutes les notifications email sont préparées dans Gmail et nécessitent un envoi manuel ; elles fonctionnent sur GitHub Pages.

@@ -23,7 +23,6 @@ npx serve .
 
 ### Option 3 — Hébergement web
 Uploadez tous les fichiers sur votre hébergeur (OVH, Infomaniak, etc.) ou déployez sur :
-- **Netlify** : connectez le dépôt GitHub comme hébergement alternatif
 - **Vercel** : `vercel --prod`
 - **GitHub Pages** : push le dossier, activez Pages dans les paramètres
 

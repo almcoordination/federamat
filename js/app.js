@@ -303,12 +303,12 @@ function reservationEmailDrafts(requestId, status, note='', reservationId=null) 
       'Stéphanie',
     ].filter(Boolean).join('\n');
     const subject = status === 'under_review'
-      ? `[FédéraMat] Demande à examiner — ${requester?.name || 'Association'}`
+      ? `Demande à examiner — ${requester?.name || 'Association'}`
       : status === 'approved'
         ? isRequester
-          ? '[FédéraMat] Votre demande de réservation est approuvée'
-          : `[FédéraMat] Matériel à prêter — ${requester?.name || 'Demande approuvée'}`
-        : '[FédéraMat] Demande de réservation refusée';
+          ? 'Votre demande de réservation est approuvée'
+          : `Matériel à prêter — ${requester?.name || 'Demande approuvée'}`
+        : 'Demande de réservation refusée';
     return {
       to: delivery.to,
       associationName: delivery.association.name || delivery.to,
@@ -372,7 +372,7 @@ function submitBroadcastEmail() {
 
   const composeUrl = gmailComposeUrl({
     bcc: recipients.join(','),
-    subject: `[FédéraMat] ${subject}`,
+    subject,
     body: message,
   });
   if (!composeUrl) {
