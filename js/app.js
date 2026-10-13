@@ -295,9 +295,12 @@ function reservationEmailDrafts(requestId, status, note='', reservationId=null) 
       'Matériel concerné :',
       ...equipmentLines,
       note ? `${status === 'rejected' ? 'Motif du refus' : 'Message'} : ${note}` : '',
+      status === 'under_review'
+        ? '𝗠𝗲𝗿𝗰𝗶 𝗱𝗲 𝗰𝗼𝗻𝗳𝗶𝗿𝗺𝗲𝗿 𝗿𝗮𝗽𝗶𝗱𝗲𝗺𝗲𝗻𝘁 𝗹𝗮 𝗱𝗶𝘀𝗽𝗼𝗻𝗶𝗯𝗶𝗹𝗶𝘁𝗲́ 𝗱𝘂 𝗺𝗮𝘁𝗲́𝗿𝗶𝗲𝗹 𝗱𝗲𝗺𝗮𝗻𝗱𝗲́'
+        : '',
       '',
       'Cordialement,',
-      'FédéraMat',
+      'Stéphanie',
     ].filter(Boolean).join('\n');
     const subject = status === 'under_review'
       ? `[FédéraMat] Demande à examiner — ${requester?.name || 'Association'}`
